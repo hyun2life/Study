@@ -521,15 +521,16 @@ def _deprecated_analyze_text_chat_2(config: dict[str, Any], prompt: str) -> str:
             {
                 "role": "system",
                 "content": (
-                    "?뱀떊? 寃뚯엫 ?쇱씠釉뚯샃??而ㅻ??덊떚 由ы룷??遺꾩꽍媛?낅땲?? "
-                    "?댁쁺???諛붾줈 ?ㅽ뻾 媛?ν븳 ?섏??쇰줈 ?붿빟?섍퀬, 怨쇱옣 ?놁씠 ?듭떖留??꾨떖?섏꽭??"
+                    "게임 라이브 서비스 Discord 커뮤니티 리포트 분석가입니다. "
+                    "운영자가 바로 실행 가능한 수준으로 요약하고, 과장 없이 핵심만 전달하세요."
                 ),
             },
             {"role": "user", "content": prompt},
         ],
         max_completion_tokens=config["openai"].get("max_output_tokens", 1200),
     )
-    analysis_text = extract_chat_message_text(response.choices[0].message)
+    analysis_text = _deprecated_extract_chat_message_text(response.choices[0].message)
+    incomplete_reason = None
     if analysis_text:
         if incomplete_reason:
             log.warning("OpenAI 분석 텍스트는 추출됐지만 응답 상태가 incomplete 입니다. reason=%s", incomplete_reason)
