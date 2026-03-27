@@ -1,0 +1,6 @@
+Discord Report/config.json
+Discord Report/state.json
+Discord Report/logs/
+Discord Report/reports/
+Discord Report/__pycache__/
+*.pyc

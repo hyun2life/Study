@@ -1,0 +1,46 @@
+{
+  "discord": {
+    "bot_token": "YOUR_DISCORD_BOT_TOKEN",
+    "channels": {
+      "feedback": [],
+      "bug_report": [
+        { "id": "CHANNEL_ID_1", "name": "bug-report-channel" }
+      ],
+      "event": [],
+      "announcement": [
+        { "id": "CHANNEL_ID_2", "name": "announcement-channel" }
+      ],
+      "general": [
+        { "id": "CHANNEL_ID_3", "name": "general-chat" }
+      ]
+    }
+  },
+  "openai": {
+    "api_key": "YOUR_OPENAI_API_KEY",
+    "model": "gpt-5",
+    "max_input_messages": 200,
+    "max_output_tokens": 1000,
+    "reasoning_effort": "low",
+    "text_verbosity": "low"
+  },
+  "email": {
+    "smtp_host": "smtp.gmail.com",
+    "smtp_port": 587,
+    "sender_address": "sender@example.com",
+    "sender_password": "YOUR_SMTP_PASSWORD_OR_APP_PASSWORD",
+    "recipients": [
+      "recipient@example.com"
+    ],
+    "subject_prefix": "[ProjectName] Discord Report"
+  },
+  "report": {
+    "lookback_hours": 24,
+    "game_title": "ProjectName",
+    "language": "ko",
+    "timezone": "Asia/Seoul",
+    "daily_send_enabled": true,
+    "weekly_enabled": true,
+    "weekly_send_weekday": 4,
+    "save_html": true
+  }
+}
