@@ -22,6 +22,7 @@ import argparse
 import html
 import json
 import logging
+import os
 import re
 import smtplib
 import sys
@@ -37,6 +38,7 @@ from openai import APIConnectionError, APIError, APITimeoutError, OpenAI, RateLi
 
 BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "config.json"
+ENV_PATH = BASE_DIR / ".env"
 STATE_PATH = BASE_DIR / "state.json"
 REPORTS_DIR = BASE_DIR / "reports"
 DAILY_DIR = REPORTS_DIR / "daily"
@@ -84,6 +86,40 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
+def load_dotenv() -> dict[str, str]:
+    if not ENV_PATH.exists():
+        return {}
+
+    env: dict[str, str] = {}
+    for line_no, raw_line in enumerate(ENV_PATH.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip().lstrip("\ufeff")
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            log.warning(".env %s번째 줄 형식이 올바르지 않아 건너뜁니다.", line_no)
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            log.warning(".env %s번째 줄에 키가 없어 건너뜁니다.", line_no)
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        env[key] = value
+    return env
+
+
+def get_env_value(dotenv: dict[str, str], key: str) -> str | None:
+    if key in os.environ:
+        return os.environ[key]
+    return dotenv.get(key)
+
+
+def split_csv_env(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def load_config() -> dict[str, Any]:
     try:
         config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -97,7 +133,28 @@ def load_config() -> dict[str, Any]:
     if missing:
         raise SystemExit(f"config.json에 필수 항목이 없습니다: {', '.join(missing)}")
 
+    dotenv = load_dotenv()
+    discord_cfg = config["discord"]
+    openai_cfg = config["openai"]
+    email_cfg = config["email"]
     report_cfg = config["report"]
+
+    discord_cfg["bot_token"] = get_env_value(dotenv, "DISCORD_BOT_TOKEN") or discord_cfg.get("bot_token", "")
+    openai_cfg["api_key"] = get_env_value(dotenv, "OPENAI_API_KEY") or openai_cfg.get("api_key", "")
+    email_cfg["smtp_host"] = get_env_value(dotenv, "SMTP_HOST") or email_cfg.get("smtp_host", "")
+    smtp_port = get_env_value(dotenv, "SMTP_PORT")
+    if smtp_port:
+        try:
+            email_cfg["smtp_port"] = int(smtp_port)
+        except ValueError as exc:
+            raise SystemExit(f"SMTP_PORT 값이 올바르지 않습니다: {smtp_port}") from exc
+    email_cfg["sender_address"] = get_env_value(dotenv, "SMTP_SENDER_ADDRESS") or email_cfg.get("sender_address", "")
+    email_cfg["sender_password"] = get_env_value(dotenv, "SMTP_SENDER_PASSWORD") or email_cfg.get("sender_password", "")
+    recipients = get_env_value(dotenv, "SMTP_RECIPIENTS")
+    if recipients is not None:
+        email_cfg["recipients"] = split_csv_env(recipients)
+    email_cfg["subject_prefix"] = get_env_value(dotenv, "EMAIL_SUBJECT_PREFIX") or email_cfg.get("subject_prefix", "")
+
     report_cfg.setdefault("game_title", "Blackshot")
     report_cfg.setdefault("language", "ko")
     report_cfg.setdefault("timezone", DEFAULT_TIMEZONE)
@@ -109,12 +166,29 @@ def load_config() -> dict[str, Any]:
     report_cfg.setdefault("weekly_send_weekday", 4)
     report_cfg.setdefault("save_html", True)
 
-    openai_cfg = config["openai"]
     openai_cfg.setdefault("model", "gpt-5")
     openai_cfg.setdefault("max_input_messages", MAX_PROMPT_MESSAGES)
     openai_cfg.setdefault("max_output_tokens", 2400)
     openai_cfg.setdefault("reasoning_effort", "low")
     openai_cfg.setdefault("text_verbosity", "low")
+
+    missing_values = []
+    if not discord_cfg.get("bot_token"):
+        missing_values.append("DISCORD_BOT_TOKEN 또는 discord.bot_token")
+    if not openai_cfg.get("api_key"):
+        missing_values.append("OPENAI_API_KEY 또는 openai.api_key")
+    if not email_cfg.get("smtp_host"):
+        missing_values.append("SMTP_HOST 또는 email.smtp_host")
+    if not email_cfg.get("smtp_port"):
+        missing_values.append("SMTP_PORT 또는 email.smtp_port")
+    if not email_cfg.get("sender_address"):
+        missing_values.append("SMTP_SENDER_ADDRESS 또는 email.sender_address")
+    if not email_cfg.get("sender_password"):
+        missing_values.append("SMTP_SENDER_PASSWORD 또는 email.sender_password")
+    if not email_cfg.get("recipients"):
+        missing_values.append("SMTP_RECIPIENTS 또는 email.recipients")
+    if missing_values:
+        raise SystemExit("필수 설정값이 비어 있습니다: " + ", ".join(missing_values))
 
     return config
 

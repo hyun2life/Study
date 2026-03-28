@@ -1,4 +1,7 @@
 Discord Report/config.json
+Discord Report/.env
+Discord Report/.env.*
+!Discord Report/.env.example
 Discord Report/state.json
 Discord Report/logs/
 Discord Report/reports/
