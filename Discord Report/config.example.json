@@ -19,7 +19,7 @@
     "api_key": "YOUR_OPENAI_API_KEY",
     "model": "gpt-5",
     "max_input_messages": 200,
-    "max_output_tokens": 1000,
+    "max_output_tokens": 2400,
     "reasoning_effort": "low",
     "text_verbosity": "low"
   },
@@ -34,10 +34,12 @@
     "subject_prefix": "[ProjectName] Discord Report"
   },
   "report": {
-    "lookback_hours": 24,
     "game_title": "ProjectName",
     "language": "ko",
     "timezone": "Asia/Seoul",
+    "window_mode": "calendar_day",
+    "daily_days_ago": 1,
+    "lookback_hours": 24,
     "daily_send_enabled": true,
     "weekly_enabled": true,
     "weekly_send_weekday": 4,
