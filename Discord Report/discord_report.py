@@ -85,6 +85,11 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 
 def load_dotenv() -> dict[str, str]:
     if not ENV_PATH.exists():
@@ -913,6 +918,12 @@ def main() -> None:
         send_daily = bool(config["report"].get("daily_send_enabled", True)) and (args.force_send_daily or not daily_already_sent)
         if send_daily:
             send_email(config, build_daily_subject(config, report_date), daily_html)
+        elif not bool(config["report"].get("daily_send_enabled", True)):
+            log.info("일간 메일 발송을 건너뜁니다. 설정에서 daily_send_enabled=false 입니다.")
+        elif daily_already_sent and not args.force_send_daily:
+            log.info("일간 메일 발송을 건너뜁니다. 기준일 %s 은 이미 sent=true 상태입니다.", report_date)
+        else:
+            log.info("일간 메일 발송을 건너뜁니다. 강제 발송 조건을 만족하지 않습니다.")
         final_message_ids = sorted(existing_message_ids | {m['id'] for m in window_messages}, key=int)
         state.setdefault("daily_reports", {})[report_date] = {
             "date": report_date,
