@@ -17,7 +17,12 @@ set "LOG_FILE=logs\manual_run.log"
 echo =============================================================== >> "%LOG_FILE%"
 echo [%date% %time%] Manual rebuild run started >> "%LOG_FILE%"
 
-python -X utf8 discord_report.py --rebuild-daily --force-send-daily >> "%LOG_FILE%" 2>&1
+set "PYTHON_EXE=%LocalAppData%\Python\bin\python.exe"
+if exist "%PYTHON_EXE%" (
+  "%PYTHON_EXE%" -X utf8 discord_report.py --rebuild-daily --force-send-daily >> "%LOG_FILE%" 2>&1
+) else (
+  python -X utf8 discord_report.py --rebuild-daily --force-send-daily >> "%LOG_FILE%" 2>&1
+)
 
 echo [%date% %time%] Manual rebuild run finished with exit code %ERRORLEVEL% >> "%LOG_FILE%"
 

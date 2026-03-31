@@ -103,14 +103,14 @@ pip install requests openai
     "channels": {
       "feedback": [],
       "bug_report": [
-        { "id": "CHANNEL_ID_1", "name": "bug-report-channel" }
+        { "category_id": "CATEGORY_ID_1", "name": "bug-report-category" }
       ],
       "event": [],
       "announcement": [
         { "id": "CHANNEL_ID_2", "name": "announcement-channel" }
       ],
       "general": [
-        { "id": "CHANNEL_ID_3", "name": "general-chat" }
+        { "category_id": "CATEGORY_ID_3", "name": "general-chat-category" }
       ]
     }
   },
@@ -144,6 +144,10 @@ pip install requests openai
   }
 }
 ```
+
+- `id`: 특정 채널 하나만 수집합니다.
+- `category_id`: 해당 Discord 카테고리 아래의 텍스트/공지 채널을 자동으로 찾아 모두 수집합니다.
+- 같은 리포트 category 안에서 `id`와 `category_id`를 함께 써도 됩니다.
 
 주의:
 
@@ -211,12 +215,13 @@ EMAIL_SUBJECT_PREFIX=[ProjectName] Discord Report
 - `Read Message History`
 - `Read Messages`
 
-## 채널 ID 확인 방법
+## 채널 ID / 카테고리 ID 확인 방법
 
 1. Discord에서 개발자 모드 활성화
-2. 대상 채널 우클릭
-3. 채널 ID 복사
+2. 대상 채널 또는 카테고리 우클릭
+3. `ID 복사`
 4. `config.json`의 원하는 category 아래에 추가
+5. 채널 하나만 넣을 때는 `{ "id": "..." }`, 카테고리 전체를 넣을 때는 `{ "category_id": "..." }` 형식을 사용
 
 ## OpenAI 설정
 

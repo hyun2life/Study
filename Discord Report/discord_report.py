@@ -51,8 +51,10 @@ DEFAULT_TIMEZONE = "Asia/Seoul"
 SEEN_ID_RETENTION_DAYS = 21
 MAX_PROMPT_MESSAGES = 200
 MAX_MESSAGE_PREVIEW_LEN = 280
+CATEGORY_CHANNEL_TYPE = 4
+MESSAGE_CHANNEL_TYPES = {0, 5}
 
-CATEGORY_LABELS = {
+DEFAULT_CATEGORY_LABELS = {
     "feedback": "피드백",
     "bug_report": "버그 제보",
     "event": "이벤트",
@@ -125,6 +127,69 @@ def split_csv_env(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def normalize_channel_sources(channels_cfg: Any) -> dict[str, list[dict[str, str]]]:
+    if not isinstance(channels_cfg, dict):
+        raise SystemExit("discord.channels 형식이 올바르지 않습니다. 카테고리별 객체여야 합니다.")
+
+    normalized: dict[str, list[dict[str, str]]] = {}
+    for report_category, sources in channels_cfg.items():
+        if sources is None:
+            normalized[report_category] = []
+            continue
+        if not isinstance(sources, list):
+            raise SystemExit(f"discord.channels.{report_category} 형식이 올바르지 않습니다. 배열이어야 합니다.")
+
+        normalized_sources: list[dict[str, str]] = []
+        for index, source in enumerate(sources, start=1):
+            if not isinstance(source, dict):
+                raise SystemExit(
+                    f"discord.channels.{report_category}[{index}] 형식이 올바르지 않습니다. 객체여야 합니다."
+                )
+
+            channel_id = str(source.get("id", "")).strip()
+            category_id = str(source.get("category_id", "")).strip()
+            name = str(source.get("name", "")).strip()
+
+            if channel_id:
+                normalized_sources.append({
+                    "type": "channel",
+                    "id": channel_id,
+                    "name": name or channel_id,
+                })
+                continue
+            if category_id:
+                normalized_sources.append({
+                    "type": "category",
+                    "category_id": category_id,
+                    "name": name or f"category:{category_id}",
+                })
+                continue
+
+            raise SystemExit(
+                f"discord.channels.{report_category}[{index}] 에는 id 또는 category_id 중 하나가 필요합니다."
+            )
+
+        normalized[report_category] = normalized_sources
+
+    return normalized
+
+
+def get_report_categories(config: dict[str, Any]) -> list[str]:
+    channels_cfg = config.get("discord", {}).get("channels", {})
+    if not isinstance(channels_cfg, dict):
+        return []
+    return list(channels_cfg.keys())
+
+
+def get_category_label(config: dict[str, Any], category: str) -> str:
+    custom_labels = config.get("discord", {}).get("category_labels", {})
+    if isinstance(custom_labels, dict):
+        label = str(custom_labels.get(category, "")).strip()
+        if label:
+            return label
+    return DEFAULT_CATEGORY_LABELS.get(category, category)
+
+
 def load_config() -> dict[str, Any]:
     try:
         config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -143,6 +208,7 @@ def load_config() -> dict[str, Any]:
     openai_cfg = config["openai"]
     email_cfg = config["email"]
     report_cfg = config["report"]
+    discord_cfg["channels"] = normalize_channel_sources(discord_cfg.get("channels", {}))
 
     discord_cfg["bot_token"] = get_env_value(dotenv, "DISCORD_BOT_TOKEN") or discord_cfg.get("bot_token", "")
     openai_cfg["api_key"] = get_env_value(dotenv, "OPENAI_API_KEY") or openai_cfg.get("api_key", "")
@@ -297,16 +363,119 @@ def get_report_window(config: dict[str, Any], now_local: datetime, tzinfo):
     }
 
 
-def fetch_messages(channel_id: str, token: str, after_dt: datetime, before_dt: datetime | None = None) -> list[dict[str, Any]]:
+def discord_api_get(path: str, token: str, params: dict[str, Any] | None = None) -> requests.Response:
     headers = {"Authorization": f"Bot {token}"}
+    return requests.get(f"{DISCORD_API}{path}", headers=headers, params=params, timeout=20)
+
+
+def fetch_channel_info(channel_id: str, token: str) -> dict[str, Any] | None:
+    resp = discord_api_get(f"/channels/{channel_id}", token)
+    if resp.status_code == 403:
+        log.warning("채널 %s 정보에 접근할 수 없습니다 (403).", channel_id)
+        return None
+    if resp.status_code == 404:
+        log.warning("채널 %s 정보를 찾을 수 없습니다 (404).", channel_id)
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
+def fetch_guild_channels(guild_id: str, token: str) -> list[dict[str, Any]]:
+    resp = discord_api_get(f"/guilds/{guild_id}/channels", token)
+    if resp.status_code == 403:
+        log.warning("길드 %s 채널 목록에 접근할 수 없습니다 (403).", guild_id)
+        return []
+    if resp.status_code == 404:
+        log.warning("길드 %s 를 찾을 수 없습니다 (404).", guild_id)
+        return []
+    resp.raise_for_status()
+    data = resp.json()
+    return data if isinstance(data, list) else []
+
+
+def expand_category_channels(
+    category_id: str,
+    token: str,
+    guild_channel_cache: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, str]]:
+    category_info = fetch_channel_info(category_id, token)
+    if not category_info:
+        return []
+
+    category_type = category_info.get("type")
+    if category_type != CATEGORY_CHANNEL_TYPE:
+        log.warning("ID %s 는 Discord 카테고리가 아닙니다 (type=%s).", category_id, category_type)
+        return []
+
+    guild_id = str(category_info.get("guild_id", "")).strip()
+    if not guild_id:
+        log.warning("카테고리 %s 에 guild_id가 없어 하위 채널을 찾을 수 없습니다.", category_id)
+        return []
+
+    if guild_id not in guild_channel_cache:
+        guild_channel_cache[guild_id] = fetch_guild_channels(guild_id, token)
+
+    children = [
+        ch for ch in guild_channel_cache[guild_id]
+        if str(ch.get("parent_id", "")) == category_id and ch.get("type") in MESSAGE_CHANNEL_TYPES
+    ]
+    children.sort(key=lambda ch: (int(ch.get("position", 0)), str(ch.get("name", "")).lower()))
+
+    resolved = [
+        {
+            "id": str(ch["id"]),
+            "name": str(ch.get("name", ch["id"])),
+        }
+        for ch in children
+        if ch.get("id")
+    ]
+    log.info(
+        "Category %-24s | %4d channels",
+        category_info.get("name", category_id),
+        len(resolved),
+    )
+    return resolved
+
+
+def resolve_configured_channels(config: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
+    token = config["discord"]["bot_token"]
+    guild_channel_cache: dict[str, list[dict[str, Any]]] = {}
+    resolved: dict[str, list[dict[str, str]]] = {}
+
+    for report_category, sources in config["discord"]["channels"].items():
+        report_channels: list[dict[str, str]] = []
+        seen_channel_ids: set[str] = set()
+
+        for source in sources:
+            source_type = source.get("type")
+            if source_type == "channel":
+                candidates = [{"id": source["id"], "name": source["name"]}]
+            elif source_type == "category":
+                candidates = expand_category_channels(source["category_id"], token, guild_channel_cache)
+            else:
+                log.warning("알 수 없는 채널 소스 형식입니다: %s", source)
+                continue
+
+            for channel in candidates:
+                channel_id = channel["id"]
+                if channel_id in seen_channel_ids:
+                    continue
+                seen_channel_ids.add(channel_id)
+                report_channels.append(channel)
+
+        resolved[report_category] = report_channels
+
+    return resolved
+
+
+def fetch_messages(channel_id: str, token: str, after_dt: datetime, before_dt: datetime | None = None) -> list[dict[str, Any]]:
     after_snowflake = snowflake_from_datetime(after_dt)
     last_id = after_snowflake
     collected: list[dict[str, Any]] = []
 
     while True:
-        url = f"{DISCORD_API}/channels/{channel_id}/messages"
         params = {"limit": 100, "after": last_id}
-        resp = requests.get(url, headers=headers, params=params, timeout=20)
+        resp = discord_api_get(f"/channels/{channel_id}/messages", token, params=params)
 
         if resp.status_code == 403:
             log.warning("채널 %s 에 접근할 수 없습니다 (403).", channel_id)
@@ -347,8 +516,9 @@ def fetch_messages(channel_id: str, token: str, after_dt: datetime, before_dt: d
 def collect_messages(config: dict[str, Any], after_dt: datetime, before_dt: datetime | None = None) -> list[dict[str, Any]]:
     token = config["discord"]["bot_token"]
     all_messages: list[dict[str, Any]] = []
+    resolved_channels = resolve_configured_channels(config)
 
-    for category, channels in config["discord"]["channels"].items():
+    for category, channels in resolved_channels.items():
         for channel in channels:
             msgs = fetch_messages(channel["id"], token, after_dt, before_dt)
             for m in msgs:
@@ -409,10 +579,10 @@ def basic_stats(messages: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def build_category_stats(messages: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    grouped: dict[str, list[dict[str, Any]]] = {key: [] for key in CATEGORY_LABELS}
+def build_category_stats(messages: list[dict[str, Any]], configured_categories: list[str]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {key: [] for key in configured_categories}
     for m in messages:
-        grouped.setdefault(m.get("_category", "general"), []).append(m)
+        grouped.setdefault(m.get("_category", "unknown"), []).append(m)
 
     result: dict[str, dict[str, Any]] = {}
     for category, items in grouped.items():
@@ -489,8 +659,11 @@ def format_message_samples(messages: list[dict[str, Any]], limit: int) -> str:
     return "\n".join(lines)
 
 
-def format_category_counts(stats: dict[str, Any]) -> str:
-    return "\n".join(f"- {CATEGORY_LABELS.get(key, key)}: {stats['category_counts'].get(key, 0)}" for key in CATEGORY_LABELS)
+def format_category_counts(config: dict[str, Any], stats: dict[str, Any]) -> str:
+    return "\n".join(
+        f"- {get_category_label(config, key)}: {stats['category_counts'].get(key, 0)}"
+        for key in get_report_categories(config)
+    )
 
 
 def build_daily_prompt(config: dict[str, Any], stats: dict[str, Any], messages: list[dict[str, Any]], previous_stats: dict[str, Any] | None, report_date: str, window_label: str) -> str:
@@ -514,7 +687,7 @@ def build_daily_prompt(config: dict[str, Any], stats: dict[str, Any], messages: 
 - 주요 작성자: {top_users}
 
 [카테고리별 메시지 수]
-{format_category_counts(stats)}
+{format_category_counts(config, stats)}
 
 [메시지 샘플]
 {message_samples}
@@ -552,7 +725,7 @@ def build_daily_prompt(config: dict[str, Any], stats: dict[str, Any], messages: 
 
 def build_category_prompt(config: dict[str, Any], category: str, category_stats: dict[str, Any], category_messages: list[dict[str, Any]], report_date: str, window_label: str) -> str:
     game_title = config["report"]["game_title"]
-    category_label = CATEGORY_LABELS.get(category, category)
+    category_label = get_category_label(config, category)
     keywords = ", ".join(category_stats.get("keywords", [])) or "없음"
     top_users = ", ".join(f"{u}({c})" for u, c in category_stats.get("top_users", [])) or "없음"
     top_channels = ", ".join(f"{c}({n})" for c, n in category_stats.get("top_channels", [])) or "없음"
@@ -761,9 +934,10 @@ def build_summary_banner(title: str, subtitle: str, stat_items: list[tuple[str, 
     return f'<div style="background:linear-gradient(135deg,#153454,#2d5f93);color:#fff;border-radius:16px 16px 0 0;padding:26px 28px"><div style="font-size:13px;opacity:.85;margin-bottom:6px">{html.escape(subtitle)}</div><h1 style="margin:0;font-size:26px">{html.escape(title)}</h1><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:20px">{stats_html}</div></div>'
 
 
-def build_category_cards(category_stats: dict[str, dict[str, Any]], category_analyses: dict[str, str]) -> str:
+def build_category_cards(config: dict[str, Any], category_stats: dict[str, dict[str, Any]], category_analyses: dict[str, str]) -> str:
     cards = []
-    for category, label in CATEGORY_LABELS.items():
+    for category in get_report_categories(config):
+        label = get_category_label(config, category)
         stats = category_stats.get(category, {})
         cards.append(f'''<div style="background:#fff;border:1px solid #dfe9f4;border-radius:14px;padding:16px"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h3 style="margin:0;font-size:18px;color:#1f3f66">{html.escape(label)}</h3><span style="background:#edf4fb;color:#24486f;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700">{stats.get("total",0)} msgs</span></div><div style="margin-top:10px;font-size:13px;line-height:1.6;color:#42576b"><div><strong>주요 채널:</strong> {html.escape(', '.join(f'{n}({c})' for n,c in stats.get('top_channels', [])) or '없음')}</div><div><strong>주요 작성자:</strong> {html.escape(', '.join(f'{n}({c})' for n,c in stats.get('top_users', [])) or '없음')}</div><div><strong>주요 키워드:</strong> {html.escape(', '.join(stats.get('keywords', [])) or '없음')}</div></div><div style="margin-top:12px;padding-top:12px;border-top:1px solid #eef3f8;font-size:14px;color:#2d3b4d">{markdown_to_html(category_analyses.get(category, '분석 결과가 없습니다.'))}</div></div>''')
     return "".join(cards)
@@ -773,16 +947,17 @@ def build_daily_html(config: dict[str, Any], report_date: str, window_label: str
     delta = "N/A" if not previous_stats else f"{stats['total'] - previous_stats.get('total', 0):+}"
     top_users_html = "".join(f"<li style='margin:4px 0'>{html.escape(user)} ({count})</li>" for user, count in stats.get("top_users", [])) or "<li>없음</li>"
     keyword_html = ", ".join(html.escape(k) for k in stats.get("keywords", [])) or "없음"
+    report_categories = get_report_categories(config)
     categories_html = "".join(
-        f"<tr><td style='padding:8px 10px;border-bottom:1px solid #eef2f7'>{html.escape(CATEGORY_LABELS.get(cat, cat))}</td><td style='padding:8px 10px;border-bottom:1px solid #eef2f7;text-align:right'>{count}</td></tr>"
-        for cat, count in stats.get("category_counts", {}).items()
+        f"<tr><td style='padding:8px 10px;border-bottom:1px solid #eef2f7'>{html.escape(get_category_label(config, cat))}</td><td style='padding:8px 10px;border-bottom:1px solid #eef2f7;text-align:right'>{stats.get('category_counts', {}).get(cat, 0)}</td></tr>"
+        for cat in report_categories
     )
     banner = build_summary_banner(
         f"{config['report']['game_title']} Discord 일간 리포트",
         f"기준일: {report_date} | 구간: {window_label}",
         [("메시지 수", str(stats["total"])), ("증감", delta), ("키워드 수", str(len(stats.get("keywords", []))))],
     )
-    return f"<!DOCTYPE html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Discord 일간 리포트</title></head><body style='margin:0;padding:24px;background:#eef3f8;font-family:Malgun Gothic,Arial,sans-serif;color:#243648'><div style='max-width:980px;margin:0 auto;background:#fff;border:1px solid #d8e3ef;border-radius:16px;overflow:hidden'>{banner}<div style='padding:22px 26px'><div style='display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start'><div style='background:#f8fbff;border:1px solid #e1ecf8;border-radius:12px;padding:16px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>카테고리 통계</h2><table style='width:100%;border-collapse:collapse;font-size:14px'>{categories_html}</table></div><div style='background:#f8fbff;border:1px solid #e1ecf8;border-radius:12px;padding:16px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>주요 작성자</h2><ul style='margin:0 0 12px 18px;padding:0'>{top_users_html}</ul><div style='font-size:14px;line-height:1.6'><strong>주요 키워드</strong> {keyword_html}</div></div></div><div style='margin-top:18px;background:#fff;border:1px solid #e6edf5;border-radius:12px;padding:18px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>AI 요약</h2><div style='font-size:14px;color:#2d3b4d'>{markdown_to_html(analysis_text)}</div></div><div style='margin-top:18px'><h2 style='margin:0 0 12px;font-size:20px;color:#1f3f66'>카테고리별 분석</h2><div style='display:grid;grid-template-columns:1fr 1fr;gap:16px'>{build_category_cards(category_stats, category_analyses)}</div></div></div></div></body></html>"
+    return f"<!DOCTYPE html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Discord 일간 리포트</title></head><body style='margin:0;padding:24px;background:#eef3f8;font-family:Malgun Gothic,Arial,sans-serif;color:#243648'><div style='max-width:980px;margin:0 auto;background:#fff;border:1px solid #d8e3ef;border-radius:16px;overflow:hidden'>{banner}<div style='padding:22px 26px'><div style='display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start'><div style='background:#f8fbff;border:1px solid #e1ecf8;border-radius:12px;padding:16px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>카테고리 통계</h2><table style='width:100%;border-collapse:collapse;font-size:14px'>{categories_html}</table></div><div style='background:#f8fbff;border:1px solid #e1ecf8;border-radius:12px;padding:16px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>주요 작성자</h2><ul style='margin:0 0 12px 18px;padding:0'>{top_users_html}</ul><div style='font-size:14px;line-height:1.6'><strong>주요 키워드</strong> {keyword_html}</div></div></div><div style='margin-top:18px;background:#fff;border:1px solid #e6edf5;border-radius:12px;padding:18px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>AI 요약</h2><div style='font-size:14px;color:#2d3b4d'>{markdown_to_html(analysis_text)}</div></div><div style='margin-top:18px'><h2 style='margin:0 0 12px;font-size:20px;color:#1f3f66'>카테고리별 분석</h2><div style='display:grid;grid-template-columns:1fr 1fr;gap:16px'>{build_category_cards(config, category_stats, category_analyses)}</div></div></div></div></body></html>"
 
 
 def build_weekly_html(config: dict[str, Any], week_label: str, total_messages: int, included_dates: list[str], analysis_text: str) -> str:
@@ -872,6 +1047,7 @@ def main() -> None:
 
     state = load_state()
     prune_seen_messages(state, now_utc)
+    report_categories = get_report_categories(config)
 
     raw_messages = collect_messages(config, after_dt, before_dt)
     fresh_messages = raw_messages if args.rebuild_daily else dedupe_new_messages(raw_messages, state, report_date)
@@ -892,7 +1068,7 @@ def main() -> None:
             existing_message_ids = set(daily_entry.get("message_ids", []))
         else:
             stats = basic_stats(window_messages) if window_messages else {"total": 0, "top_users": [], "keywords": [], "category_counts": {}, "channel_counts": {}}
-            category_stats = build_category_stats(window_messages)
+            category_stats = build_category_stats(window_messages, report_categories)
             existing_message_ids = set()
 
             if window_messages:
@@ -906,8 +1082,11 @@ def main() -> None:
                         category_analyses[category] = "## 카테고리 요약\n- 분위기: 메시지 없음\n- 핵심 해석: 데이터가 없습니다."
             else:
                 stats = {"total": 0, "top_users": [], "keywords": [], "category_counts": {}, "channel_counts": {}}
-                category_stats = build_category_stats([])
-                category_analyses = {k: "## 카테고리 요약\n- 분위기: 신규 메시지 없음\n- 핵심 해석: 선택한 구간에서 이 카테고리에 수집된 메시지가 없습니다." for k in CATEGORY_LABELS}
+                category_stats = build_category_stats([], report_categories)
+                category_analyses = {
+                    k: "## 카테고리 요약\n- 분위기: 신규 메시지 없음\n- 핵심 해석: 선택한 구간에서 이 카테고리에 수집된 메시지가 없습니다."
+                    for k in report_categories
+                }
                 analysis_text = "## 일간 요약\n- 전체 분위기: 신규 메시지 없음\n- 핵심 해석: 선택한 구간에서 수집된 메시지가 없습니다."
                 existing_message_ids = set()
 

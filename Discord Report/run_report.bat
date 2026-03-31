@@ -17,7 +17,12 @@ set "LOG_FILE=logs\scheduler.log"
 echo =============================================================== >> "%LOG_FILE%"
 echo [%date% %time%] Scheduler run started >> "%LOG_FILE%"
 
-python -X utf8 discord_report.py >> "%LOG_FILE%" 2>&1
+set "PYTHON_EXE=%LocalAppData%\Python\bin\python.exe"
+if exist "%PYTHON_EXE%" (
+  "%PYTHON_EXE%" -X utf8 discord_report.py >> "%LOG_FILE%" 2>&1
+) else (
+  python -X utf8 discord_report.py >> "%LOG_FILE%" 2>&1
+)
 
 echo [%date% %time%] Scheduler run finished with exit code %ERRORLEVEL% >> "%LOG_FILE%"
 

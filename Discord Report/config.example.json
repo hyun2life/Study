@@ -4,14 +4,14 @@
     "channels": {
       "feedback": [],
       "bug_report": [
-        { "id": "CHANNEL_ID_1", "name": "bug-report-channel" }
+        { "category_id": "CATEGORY_ID_1", "name": "bug-report-category" }
       ],
       "event": [],
       "announcement": [
         { "id": "CHANNEL_ID_2", "name": "announcement-channel" }
       ],
       "general": [
-        { "id": "CHANNEL_ID_3", "name": "general-chat" }
+        { "category_id": "CATEGORY_ID_3", "name": "general-chat-category" }
       ]
     }
   },
