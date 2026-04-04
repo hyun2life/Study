@@ -1,16 +1,18 @@
-# Discord 일간/주간 리포트 운영 가이드
+# Discord / Facebook 커뮤니티 리포트 운영 가이드
 
-이 프로젝트는 Discord 채널 메시지를 수집하고, OpenAI로 요약 분석한 뒤, HTML 리포트 저장과 이메일 발송까지 자동화합니다.
+이 프로젝트는 Discord 채널 메시지와 Facebook 페이지 게시글/댓글을 수집하고, OpenAI로 요약 분석한 뒤, HTML 리포트 저장과 이메일 발송까지 자동화합니다.
 특정 게임 전용이 아니라 다른 프로젝트에도 그대로 복제해서 사용할 수 있도록 구성했습니다.
 
 ## 개요
 
 - 지정한 Discord 채널의 메시지를 수집합니다.
-- 일간 리포트를 생성합니다.
-- 주간 리포트를 생성합니다.
+- 지정한 Facebook 페이지의 게시글과 댓글을 수집합니다.
+- Discord 일간 리포트를 생성합니다.
+- Discord 주간 리포트를 생성합니다.
+- Facebook 일간 리포트를 별도 파일로 생성합니다.
 - OpenAI 기반 요약과 운영 인사이트를 만듭니다.
 - HTML 파일을 저장하고 이메일로 발송합니다.
-- 중복 메시지 처리와 중복 발송을 방지합니다.
+- Discord 중복 메시지 처리와 중복 발송을 방지합니다.
 
 ## 폴더 구조
 
@@ -26,6 +28,7 @@ discord_report/
 |-- state.json
 |-- reports/
 |   |-- daily/
+|   |-- facebook_daily/
 |   `-- weekly/
 `-- logs/
 ```
@@ -33,12 +36,13 @@ discord_report/
 ## 주요 파일 설명
 
 - `discord_report.py`: 메인 실행 스크립트
-- `config.json`: 채널 목록, 리포트 옵션, 비밀이 아닌 운영 설정
+- `config.json`: Discord/Facebook 수집 대상, 리포트 옵션, 비밀이 아닌 운영 설정
 - `config.example.json`: `config.json` 예시 파일
 - `.env`: 토큰, API 키, 메일 계정 비밀번호 같은 비밀값 파일
 - `.env.example`: `.env` 예시 파일
-- `state.json`: 처리한 메시지 ID, 발송 여부, 일간/주간 리포트 상태 저장
-- `reports/daily`: 일간 HTML 리포트 저장 폴더
+- `state.json`: Discord/Facebook 리포트 상태 저장
+- `reports/daily`: Discord 일간 HTML 리포트 저장 폴더
+- `reports/facebook_daily`: Facebook 일간 HTML 리포트 저장 폴더
 - `reports/weekly`: 주간 HTML 리포트 저장 폴더
 - `logs`: 실행 로그 저장 폴더
 - `run_report.bat`: 일반 실행 또는 스케줄러 등록용 배치 파일
@@ -53,8 +57,8 @@ discord_report/
 
 예를 들면 아래처럼 나눕니다.
 
-- `config.json`에는 채널 ID, 시간대, 리포트 기간, 주간 발송 요일
-- `.env`에는 Discord Bot Token, OpenAI API Key, SMTP 비밀번호
+- `config.json`에는 Discord 채널 ID, Facebook 페이지 ID, 시간대, 리포트 기간, 주간 발송 요일
+- `.env`에는 Discord Bot Token, Facebook Page Access Token, OpenAI API Key, SMTP 비밀번호
 
 이렇게 나누는 이유는 단순합니다.
 
@@ -66,6 +70,7 @@ discord_report/
 
 - Python 3.10 이상
 - Discord Bot Token
+- Facebook Page Access Token
 - OpenAI API Key
 - SMTP 메일 발송 계정
 
@@ -114,6 +119,15 @@ pip install requests openai
       ]
     }
   },
+  "facebook": {
+    "enabled": false,
+    "page_access_token": "",
+    "send_daily_email": true,
+    "graph_api_version": "v23.0",
+    "pages": [
+      { "page_id": "PAGE_ID_1", "name": "Official Facebook Page" }
+    ]
+  },
   "openai": {
     "api_key": "",
     "model": "gpt-5",
@@ -128,7 +142,7 @@ pip install requests openai
     "sender_address": "",
     "sender_password": "",
     "recipients": [],
-    "subject_prefix": "[ProjectName] Discord Report"
+    "subject_prefix": "[ProjectName] Community Report"
   },
   "report": {
     "game_title": "ProjectName",
@@ -148,10 +162,15 @@ pip install requests openai
 - `id`: 특정 채널 하나만 수집합니다.
 - `category_id`: 해당 Discord 카테고리 아래의 텍스트/공지 채널을 자동으로 찾아 모두 수집합니다.
 - 같은 리포트 category 안에서 `id`와 `category_id`를 함께 써도 됩니다.
+- `facebook.enabled`: Facebook 리포트 사용 여부입니다.
+- `facebook.pages`: 수집할 Facebook 페이지 목록입니다.
+- `facebook.send_daily_email`: Facebook 일간 리포트 메일 발송 여부입니다.
+- `facebook.graph_api_version`: 사용할 Meta Graph API 버전입니다.
 
 주의:
 
 - `config.json` 안의 `bot_token`, `api_key`, `sender_password` 같은 값은 비워두고 `.env`로 옮기는 것을 권장합니다.
+- `facebook.page_access_token`도 비워두고 `.env`에서 관리하는 것을 권장합니다.
 - 코드에서는 `.env` 값을 우선 읽고, 없으면 `config.json` 값을 fallback으로 사용합니다.
 
 ## `.env` 역할
@@ -162,18 +181,20 @@ pip install requests openai
 
 ```env
 DISCORD_BOT_TOKEN=여기에_디스코드_봇_토큰
+FACEBOOK_PAGE_ACCESS_TOKEN=여기에_페이스북_페이지_액세스_토큰
 OPENAI_API_KEY=여기에_OpenAI_API_키
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_SENDER_ADDRESS=sender@example.com
 SMTP_SENDER_PASSWORD=여기에_앱비밀번호
 SMTP_RECIPIENTS=recipient1@example.com,recipient2@example.com
-EMAIL_SUBJECT_PREFIX=[ProjectName] Discord Report
+EMAIL_SUBJECT_PREFIX=[ProjectName] Community Report
 ```
 
 설명:
 
 - `DISCORD_BOT_TOKEN`: Discord 봇 토큰
+- `FACEBOOK_PAGE_ACCESS_TOKEN`: Facebook 페이지 액세스 토큰
 - `OPENAI_API_KEY`: OpenAI API 키
 - `SMTP_SENDER_ADDRESS`: 발신 메일 주소
 - `SMTP_SENDER_PASSWORD`: SMTP 비밀번호 또는 앱 비밀번호
@@ -185,6 +206,8 @@ EMAIL_SUBJECT_PREFIX=[ProjectName] Discord Report
 `config.json`에서 바꿀 것:
 
 - `discord.channels`
+- `facebook.enabled`
+- `facebook.pages`
 - `report.game_title`
 - `report.language`
 - `report.timezone`
@@ -195,6 +218,7 @@ EMAIL_SUBJECT_PREFIX=[ProjectName] Discord Report
 `.env`에서 바꿀 것:
 
 - `DISCORD_BOT_TOKEN`
+- `FACEBOOK_PAGE_ACCESS_TOKEN`
 - `OPENAI_API_KEY`
 - `SMTP_SENDER_ADDRESS`
 - `SMTP_SENDER_PASSWORD`
@@ -222,6 +246,20 @@ EMAIL_SUBJECT_PREFIX=[ProjectName] Discord Report
 3. `ID 복사`
 4. `config.json`의 원하는 category 아래에 추가
 5. 채널 하나만 넣을 때는 `{ "id": "..." }`, 카테고리 전체를 넣을 때는 `{ "category_id": "..." }` 형식을 사용
+
+## Facebook 설정 방법
+
+1. Meta 개발자 설정에서 Page Access Token을 준비합니다.
+2. 운영 중인 Facebook 페이지의 `page_id`를 확인합니다.
+3. `config.json`의 `facebook.pages`에 `{ "page_id": "...", "name": "..." }` 형식으로 추가합니다.
+4. `.env`의 `FACEBOOK_PAGE_ACCESS_TOKEN`에 토큰을 입력합니다.
+5. Facebook 리포트를 사용할 때는 `facebook.enabled`를 `true`로 설정합니다.
+
+참고:
+
+- 현재 구현은 `Facebook 페이지 게시글`과 `해당 게시글의 댓글`을 별도 리포트로 분석합니다.
+- Facebook 리포트는 Discord와 섞지 않고 `reports/facebook_daily/` 아래에 별도 HTML로 저장합니다.
+- Discord 주간 리포트는 기존과 동일하게 유지됩니다.
 
 ## OpenAI 설정
 
@@ -270,14 +308,16 @@ Gmail 사용 시:
 
 ### 일간 리포트
 
-- 설정된 구간의 메시지를 조회합니다.
-- 이미 처리한 메시지는 기본적으로 제외합니다.
-- HTML 리포트를 저장합니다.
-- 해당 기준일 메일이 아직 발송되지 않았다면 메일을 발송합니다.
+- Discord는 설정된 구간의 메시지를 조회합니다.
+- Facebook은 설정된 페이지의 게시글과 댓글을 조회합니다.
+- Discord 일간 HTML은 `reports/daily/`에 저장합니다.
+- Facebook 일간 HTML은 `reports/facebook_daily/`에 저장합니다.
+- 해당 기준일 메일이 아직 발송되지 않았다면 각 리포트를 메일로 발송합니다.
 - 필요 시 `--force-send-daily`, `--rebuild-daily`로 다시 실행할 수 있습니다.
 
 ### 주간 리포트
 
+- Discord 주간 리포트만 생성합니다.
 - 기준일을 끝점으로 직전 7일 구간을 요약합니다.
 - `state.json`에 저장된 일간 데이터가 모두 있어야 생성됩니다.
 - 동일 주간 메일은 기본적으로 한 번만 발송합니다.
@@ -341,10 +381,11 @@ python discord_report.py --rebuild-daily --force-send-daily
 
 1. `.env`와 `config.json`이 모두 채워졌는지 확인
 2. `python discord_report.py --rebuild-daily --force-send-daily` 실행
-3. `logs/`에서 Discord/OpenAI 호출 로그 확인
-4. `reports/daily/` 아래 HTML 생성 확인
-5. 메일 수신 확인
-6. `state.json` 갱신 확인
+3. `logs/`에서 Discord/Facebook/OpenAI 호출 로그 확인
+4. `reports/daily/` 아래 Discord HTML 생성 확인
+5. Facebook을 켠 경우 `reports/facebook_daily/` 아래 HTML 생성 확인
+6. 메일 수신 확인
+7. `state.json` 갱신 확인
 
 주간 테스트 시:
 
@@ -366,15 +407,16 @@ python discord_report.py --rebuild-daily --force-send-daily
 
 `401 Unauthorized`
 
-- Discord Token 또는 OpenAI API Key가 잘못된 경우
+- Discord Token, Facebook Page Access Token 또는 OpenAI API Key가 잘못된 경우
 
 `403 Forbidden`
 
-- Bot이 채널을 읽을 권한이 없는 경우
+- Bot이 Discord 채널을 읽을 권한이 없는 경우
+- Facebook 페이지/댓글 조회 권한이 없는 경우
 
 `404 Not Found`
 
-- 채널 ID가 잘못되었거나 삭제된 경우
+- 채널 ID 또는 Facebook 페이지 ID가 잘못되었거나 삭제된 경우
 
 `429 Too Many Requests`
 
@@ -406,8 +448,10 @@ python discord_report.py --rebuild-daily --force-send-daily
 - `config.example.json`을 `config.json`으로 복사 완료
 - `.env.example`을 `.env`로 복사 완료
 - Discord 채널 ID 입력 완료
+- Facebook 사용 시 페이지 ID 입력 완료
 - 토큰/비밀번호 입력 완료
 - 수동 테스트 1회 완료
-- 일간 메일 수신 확인 완료
+- Discord 일간 메일 수신 확인 완료
+- Facebook 사용 시 Facebook 일간 메일 수신 확인 완료
 - 주간 강제 발송 테스트 완료
 - 스케줄러 등록 완료

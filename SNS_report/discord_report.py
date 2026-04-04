@@ -43,9 +43,11 @@ STATE_PATH = BASE_DIR / "state.json"
 REPORTS_DIR = BASE_DIR / "reports"
 DAILY_DIR = REPORTS_DIR / "daily"
 WEEKLY_DIR = REPORTS_DIR / "weekly"
+FACEBOOK_DAILY_DIR = REPORTS_DIR / "facebook_daily"
 LOGS_DIR = BASE_DIR / "logs"
 
 DISCORD_API = "https://discord.com/api/v10"
+FACEBOOK_GRAPH_API = "https://graph.facebook.com"
 DISCORD_EPOCH_MS = 1420070400000
 DEFAULT_TIMEZONE = "Asia/Seoul"
 SEEN_ID_RETENTION_DAYS = 21
@@ -74,6 +76,7 @@ STOPWORDS = {
 REPORTS_DIR.mkdir(exist_ok=True)
 DAILY_DIR.mkdir(exist_ok=True)
 WEEKLY_DIR.mkdir(exist_ok=True)
+FACEBOOK_DAILY_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
 LOG_PATH = LOGS_DIR / f"report_{datetime.now().strftime('%Y%m%d')}.log"
@@ -174,6 +177,27 @@ def normalize_channel_sources(channels_cfg: Any) -> dict[str, list[dict[str, str
     return normalized
 
 
+def normalize_facebook_pages(pages_cfg: Any) -> list[dict[str, str]]:
+    if pages_cfg is None:
+        return []
+    if not isinstance(pages_cfg, list):
+        raise SystemExit("facebook.pages 형식이 올바르지 않습니다. 배열이어야 합니다.")
+
+    normalized: list[dict[str, str]] = []
+    for index, page in enumerate(pages_cfg, start=1):
+        if not isinstance(page, dict):
+            raise SystemExit(f"facebook.pages[{index}] 형식이 올바르지 않습니다. 객체여야 합니다.")
+        page_id = str(page.get("page_id", "")).strip()
+        name = str(page.get("name", "")).strip()
+        if not page_id:
+            raise SystemExit(f"facebook.pages[{index}] 에는 page_id가 필요합니다.")
+        normalized.append({
+            "page_id": page_id,
+            "name": name or page_id,
+        })
+    return normalized
+
+
 def get_report_categories(config: dict[str, Any]) -> list[str]:
     channels_cfg = config.get("discord", {}).get("channels", {})
     if not isinstance(channels_cfg, dict):
@@ -205,12 +229,15 @@ def load_config() -> dict[str, Any]:
 
     dotenv = load_dotenv()
     discord_cfg = config["discord"]
+    facebook_cfg = config.setdefault("facebook", {})
     openai_cfg = config["openai"]
     email_cfg = config["email"]
     report_cfg = config["report"]
     discord_cfg["channels"] = normalize_channel_sources(discord_cfg.get("channels", {}))
+    facebook_cfg["pages"] = normalize_facebook_pages(facebook_cfg.get("pages", []))
 
     discord_cfg["bot_token"] = get_env_value(dotenv, "DISCORD_BOT_TOKEN") or discord_cfg.get("bot_token", "")
+    facebook_cfg["page_access_token"] = get_env_value(dotenv, "FACEBOOK_PAGE_ACCESS_TOKEN") or facebook_cfg.get("page_access_token", "")
     openai_cfg["api_key"] = get_env_value(dotenv, "OPENAI_API_KEY") or openai_cfg.get("api_key", "")
     email_cfg["smtp_host"] = get_env_value(dotenv, "SMTP_HOST") or email_cfg.get("smtp_host", "")
     smtp_port = get_env_value(dotenv, "SMTP_PORT")
@@ -237,15 +264,25 @@ def load_config() -> dict[str, Any]:
     report_cfg.setdefault("weekly_send_weekday", 4)
     report_cfg.setdefault("save_html", True)
 
+    facebook_cfg.setdefault("enabled", False)
+    facebook_cfg.setdefault("send_daily_email", True)
+    facebook_cfg.setdefault("graph_api_version", "v23.0")
+
     openai_cfg.setdefault("model", "gpt-5")
     openai_cfg.setdefault("max_input_messages", MAX_PROMPT_MESSAGES)
     openai_cfg.setdefault("max_output_tokens", 2400)
     openai_cfg.setdefault("reasoning_effort", "low")
     openai_cfg.setdefault("text_verbosity", "low")
+    openai_cfg.setdefault("timeout_seconds", 90)
 
     missing_values = []
     if not discord_cfg.get("bot_token"):
         missing_values.append("DISCORD_BOT_TOKEN 또는 discord.bot_token")
+    if facebook_cfg.get("enabled"):
+        if not facebook_cfg.get("page_access_token"):
+            missing_values.append("FACEBOOK_PAGE_ACCESS_TOKEN 또는 facebook.page_access_token")
+        if not facebook_cfg.get("pages"):
+            missing_values.append("facebook.pages")
     if not openai_cfg.get("api_key"):
         missing_values.append("OPENAI_API_KEY 또는 openai.api_key")
     if not email_cfg.get("smtp_host"):
@@ -297,6 +334,7 @@ def load_state() -> dict[str, Any]:
             "seen_messages": {},
             "daily_reports": {},
             "weekly_reports": {},
+            "facebook_daily_reports": {},
         }
 
     try:
@@ -307,11 +345,13 @@ def load_state() -> dict[str, Any]:
             "seen_messages": {},
             "daily_reports": {},
             "weekly_reports": {},
+            "facebook_daily_reports": {},
         }
 
     state.setdefault("seen_messages", {})
     state.setdefault("daily_reports", {})
     state.setdefault("weekly_reports", {})
+    state.setdefault("facebook_daily_reports", {})
     return state
 
 
@@ -469,12 +509,15 @@ def resolve_configured_channels(config: dict[str, Any]) -> dict[str, list[dict[s
 
 
 def fetch_messages(channel_id: str, token: str, after_dt: datetime, before_dt: datetime | None = None) -> list[dict[str, Any]]:
-    after_snowflake = snowflake_from_datetime(after_dt)
-    last_id = after_snowflake
+    after_snowflake = int(snowflake_from_datetime(after_dt))
+    before_snowflake = snowflake_from_datetime(before_dt) if before_dt is not None else None
+    cursor_before = before_snowflake
     collected: list[dict[str, Any]] = []
 
     while True:
-        params = {"limit": 100, "after": last_id}
+        params = {"limit": 100}
+        if cursor_before is not None:
+            params["before"] = cursor_before
         resp = discord_api_get(f"/channels/{channel_id}/messages", token, params=params)
 
         if resp.status_code == 403:
@@ -490,7 +533,11 @@ def fetch_messages(channel_id: str, token: str, after_dt: datetime, before_dt: d
             break
 
         filtered = []
+        reached_after_boundary = False
         for m in batch:
+            if int(m["id"]) <= after_snowflake:
+                reached_after_boundary = True
+                continue
             if m.get("author", {}).get("bot", False):
                 continue
             if m.get("type", 0) != 0:
@@ -504,9 +551,9 @@ def fetch_messages(channel_id: str, token: str, after_dt: datetime, before_dt: d
             filtered.append(m)
 
         collected.extend(filtered)
-        last_id = batch[-1]["id"]
+        cursor_before = batch[-1]["id"]
 
-        if len(batch) < 100:
+        if len(batch) < 100 or reached_after_boundary:
             break
 
     collected.sort(key=lambda m: int(m["id"]))
@@ -530,6 +577,253 @@ def collect_messages(config: dict[str, Any], after_dt: datetime, before_dt: date
 
     all_messages.sort(key=lambda m: int(m["id"]))
     return all_messages
+
+
+def facebook_api_get(
+    path: str,
+    token: str,
+    api_version: str,
+    params: dict[str, Any] | None = None,
+    next_url: str | None = None,
+) -> requests.Response:
+    if next_url:
+        return requests.get(next_url, timeout=30)
+    merged = dict(params or {})
+    merged["access_token"] = token
+    url = f"{FACEBOOK_GRAPH_API}/{api_version}{path}"
+    return requests.get(url, params=merged, timeout=30)
+
+
+def facebook_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    for parser in (
+        lambda text: datetime.fromisoformat(text),
+        lambda text: datetime.strptime(text, "%Y-%m-%dT%H:%M:%S%z"),
+    ):
+        try:
+            return parser(normalized).astimezone(timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def facebook_text(value: Any) -> str:
+    return normalize_text(str(value or "").strip())
+
+
+def facebook_post_title(post: dict[str, Any]) -> str:
+    text = facebook_text(post.get("content", ""))
+    if text:
+        return text[:90]
+    status_type = facebook_text(post.get("_status_type", ""))
+    return status_type or "텍스트 없는 게시글"
+
+
+def fetch_facebook_edge(
+    path: str,
+    token: str,
+    api_version: str,
+    params: dict[str, Any],
+) -> list[dict[str, Any]]:
+    collected: list[dict[str, Any]] = []
+    next_url: str | None = None
+    while True:
+        resp = facebook_api_get(path, token, api_version, params=params, next_url=next_url)
+        resp.raise_for_status()
+        payload = resp.json()
+        if not isinstance(payload, dict):
+            break
+        batch = payload.get("data", [])
+        if not isinstance(batch, list) or not batch:
+            break
+        collected.extend(item for item in batch if isinstance(item, dict))
+        next_url = payload.get("paging", {}).get("next")
+        if not next_url:
+            break
+    return collected
+
+
+def fetch_facebook_comments(
+    object_id: str,
+    page_id: str,
+    page_name: str,
+    post_id: str,
+    post_title: str,
+    token: str,
+    api_version: str,
+    after_dt: datetime,
+    before_dt: datetime | None = None,
+    parent_comment_id: str | None = None,
+) -> list[dict[str, Any]]:
+    params = {
+        "fields": "id,message,created_time,from,comment_count,parent{id}",
+        "limit": 100,
+        "filter": "stream",
+    }
+    if after_dt is not None:
+        params["since"] = int(after_dt.timestamp())
+    if before_dt is not None:
+        params["until"] = int(before_dt.timestamp())
+
+    comments: list[dict[str, Any]] = []
+    for raw_comment in fetch_facebook_edge(f"/{object_id}/comments", token, api_version, params):
+        created_time = facebook_datetime(str(raw_comment.get("created_time", "")))
+        if created_time is None:
+            continue
+        if created_time < after_dt:
+            continue
+        if before_dt is not None and created_time >= before_dt:
+            continue
+        message = facebook_text(raw_comment.get("message", ""))
+        if message:
+            comments.append({
+                "id": str(raw_comment.get("id", "")),
+                "content": message,
+                "author": {"username": facebook_text(raw_comment.get("from", {}).get("name", "unknown")) or "unknown"},
+                "_platform": "facebook",
+                "_content_type": "comment",
+                "_page_id": page_id,
+                "_page_name": page_name,
+                "_post_id": post_id,
+                "_post_title": post_title,
+                "_parent_id": parent_comment_id or str(raw_comment.get("parent", {}).get("id", "")).strip(),
+                "_created_time": created_time.isoformat(),
+            })
+
+        reply_count = int(raw_comment.get("comment_count", 0) or 0)
+        comment_id = str(raw_comment.get("id", "")).strip()
+        if reply_count > 0 and comment_id:
+            comments.extend(
+                fetch_facebook_comments(
+                    comment_id,
+                    page_id,
+                    page_name,
+                    post_id,
+                    post_title,
+                    token,
+                    api_version,
+                    after_dt,
+                    before_dt,
+                    parent_comment_id=comment_id,
+                )
+            )
+    return comments
+
+
+def fetch_facebook_page_data(
+    page: dict[str, str],
+    config: dict[str, Any],
+    after_dt: datetime,
+    before_dt: datetime | None = None,
+) -> dict[str, Any]:
+    token = config["facebook"]["page_access_token"]
+    api_version = config["facebook"]["graph_api_version"]
+    page_id = page["page_id"]
+    page_name = page["name"]
+    params: dict[str, Any] = {
+        "fields": "id,message,story,created_time,permalink_url,status_type,from",
+        "limit": 100,
+    }
+    if after_dt is not None:
+        params["since"] = int(after_dt.timestamp())
+    if before_dt is not None:
+        params["until"] = int(before_dt.timestamp())
+
+    posts: list[dict[str, Any]] = []
+    comments: list[dict[str, Any]] = []
+    for raw_post in fetch_facebook_edge(f"/{page_id}/posts", token, api_version, params):
+        created_time = facebook_datetime(str(raw_post.get("created_time", "")))
+        if created_time is None:
+            continue
+        if created_time < after_dt:
+            continue
+        if before_dt is not None and created_time >= before_dt:
+            continue
+
+        content = facebook_text(raw_post.get("message") or raw_post.get("story") or "")
+        post_id = str(raw_post.get("id", "")).strip()
+        post_item = {
+            "id": post_id,
+            "content": content,
+            "author": {"username": facebook_text(raw_post.get("from", {}).get("name", page_name)) or page_name},
+            "_platform": "facebook",
+            "_content_type": "post",
+            "_page_id": page_id,
+            "_page_name": page_name,
+            "_permalink_url": str(raw_post.get("permalink_url", "")).strip(),
+            "_status_type": facebook_text(raw_post.get("status_type", "")),
+            "_created_time": created_time.isoformat(),
+        }
+        posts.append(post_item)
+        comments.extend(
+            fetch_facebook_comments(
+                post_id,
+                page_id,
+                page_name,
+                post_id,
+                facebook_post_title(post_item),
+                token,
+                api_version,
+                after_dt,
+                before_dt,
+            )
+        )
+
+    posts.sort(key=lambda item: item.get("_created_time", ""))
+    deduped_comments: dict[str, dict[str, Any]] = {}
+    for comment in comments:
+        comment_id = str(comment.get("id", "")).strip()
+        if comment_id and comment_id not in deduped_comments:
+            deduped_comments[comment_id] = comment
+    comments = sorted(deduped_comments.values(), key=lambda item: item.get("_created_time", ""))
+    return {
+        "page_id": page_id,
+        "page_name": page_name,
+        "posts": posts,
+        "comments": comments,
+    }
+
+
+def collect_facebook_data(
+    config: dict[str, Any],
+    after_dt: datetime,
+    before_dt: datetime | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    if not config.get("facebook", {}).get("enabled"):
+        return [], []
+
+    page_results = []
+    errors: list[str] = []
+    for page in config["facebook"]["pages"]:
+        try:
+            page_data = fetch_facebook_page_data(page, config, after_dt, before_dt)
+        except requests.RequestException as exc:
+            log.warning("Facebook 페이지 %s 수집 실패: %s", page["name"], exc)
+            errors.append(f"{page['name']}: {exc}")
+            continue
+        page_results.append(page_data)
+        log.info(
+            "Facebook Page %-24s | %4d posts | %4d comments",
+            page_data["page_name"],
+            len(page_data["posts"]),
+            len(page_data["comments"]),
+        )
+    return page_results, errors
+
+
+def facebook_item_ids(page_results: list[dict[str, Any]]) -> list[str]:
+    return sorted(
+        {
+            str(item["id"])
+            for page_data in page_results
+            for item in [*page_data.get("posts", []), *page_data.get("comments", [])]
+            if item.get("id")
+        }
+    )
 
 
 def dedupe_new_messages(messages: list[dict[str, Any]], state: dict[str, Any], report_date: str) -> list[dict[str, Any]]:
@@ -649,6 +943,86 @@ def merge_stats(existing: dict[str, Any], fresh: dict[str, Any]) -> dict[str, An
     }
 
 
+def build_facebook_stats(page_results: list[dict[str, Any]]) -> dict[str, Any]:
+    pages = Counter()
+    commenters = Counter()
+    keywords = Counter()
+    post_counts: dict[str, int] = {}
+    comment_counts: dict[str, int] = {}
+    top_posts: list[dict[str, Any]] = []
+
+    total_posts = 0
+    total_comments = 0
+    for page_data in page_results:
+        page_name = page_data["page_name"]
+        posts = page_data.get("posts", [])
+        comments = page_data.get("comments", [])
+        total_posts += len(posts)
+        total_comments += len(comments)
+        post_counts[page_name] = len(posts)
+        comment_counts[page_name] = len(comments)
+        pages[page_name] += len(posts) + len(comments)
+
+        comments_by_post = Counter(comment.get("_post_id", "") for comment in comments if comment.get("_post_id"))
+        for post in posts:
+            keywords.update(tokenize(post.get("content", "")))
+            top_posts.append({
+                "post_id": post["id"],
+                "page_name": page_name,
+                "title": facebook_post_title(post),
+                "comment_count": comments_by_post.get(post["id"], 0),
+                "permalink_url": post.get("_permalink_url", ""),
+            })
+        for comment in comments:
+            commenters[comment.get("author", {}).get("username", "unknown")] += 1
+            keywords.update(tokenize(comment.get("content", "")))
+
+    top_posts.sort(key=lambda item: (-item["comment_count"], item["title"]))
+    return {
+        "total_posts": total_posts,
+        "total_comments": total_comments,
+        "total_items": total_posts + total_comments,
+        "page_post_counts": post_counts,
+        "page_comment_counts": comment_counts,
+        "top_pages": pages.most_common(5),
+        "top_commenters": commenters.most_common(5),
+        "keywords": [word for word, _ in keywords.most_common(12)],
+        "top_posts": top_posts[:5],
+    }
+
+
+def build_facebook_page_stats(page_results: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for page_data in page_results:
+        posts = page_data.get("posts", [])
+        comments = page_data.get("comments", [])
+        commenters = Counter()
+        keywords = Counter()
+        comments_by_post = Counter(comment.get("_post_id", "") for comment in comments if comment.get("_post_id"))
+        for post in posts:
+            keywords.update(tokenize(post.get("content", "")))
+        for comment in comments:
+            commenters[comment.get("author", {}).get("username", "unknown")] += 1
+            keywords.update(tokenize(comment.get("content", "")))
+        top_posts = []
+        for post in posts:
+            top_posts.append({
+                "post_id": post["id"],
+                "title": facebook_post_title(post),
+                "comment_count": comments_by_post.get(post["id"], 0),
+                "permalink_url": post.get("_permalink_url", ""),
+            })
+        top_posts.sort(key=lambda item: (-item["comment_count"], item["title"]))
+        result[page_data["page_name"]] = {
+            "posts": len(posts),
+            "comments": len(comments),
+            "top_commenters": commenters.most_common(3),
+            "keywords": [word for word, _ in keywords.most_common(8)],
+            "top_posts": top_posts[:3],
+        }
+    return result
+
+
 def format_message_samples(messages: list[dict[str, Any]], limit: int) -> str:
     lines = []
     for m in messages[:limit]:
@@ -657,6 +1031,151 @@ def format_message_samples(messages: list[dict[str, Any]], limit: int) -> str:
         text = normalize_text(m.get("content", ""))[:MAX_MESSAGE_PREVIEW_LEN]
         lines.append(f"[{channel}] {user}: {text}")
     return "\n".join(lines)
+
+
+def format_facebook_samples(posts: list[dict[str, Any]], comments: list[dict[str, Any]], limit: int) -> str:
+    lines = []
+    for post in posts[: max(1, limit // 2)]:
+        page_name = post.get("_page_name", "unknown")
+        text = facebook_post_title(post)
+        lines.append(f"[{page_name}][게시글] {text}")
+    for comment in comments[: max(1, limit // 2)]:
+        page_name = comment.get("_page_name", "unknown")
+        user = comment.get("author", {}).get("username", "unknown")
+        text = normalize_text(comment.get("content", ""))[:MAX_MESSAGE_PREVIEW_LEN]
+        post_title = normalize_text(comment.get("_post_title", ""))[:50] or "원문 없음"
+        lines.append(f"[{page_name}][댓글][{post_title}] {user}: {text}")
+    return "\n".join(lines[:limit])
+
+
+def facebook_analysis_system_prompt() -> str:
+    return (
+        "당신은 Facebook 페이지 운영 리포트를 작성하는 커뮤니티 분석가입니다. "
+        "게시글과 댓글을 명확히 구분하고, 댓글 반응의 온도와 운영상 필요한 후속 조치를 "
+        "한국어로 간결하고 실무적으로 정리하세요."
+    )
+
+
+def build_facebook_daily_prompt(
+    config: dict[str, Any],
+    report_date: str,
+    window_label: str,
+    stats: dict[str, Any],
+    page_stats: dict[str, dict[str, Any]],
+    page_results: list[dict[str, Any]],
+) -> str:
+    game_title = config["report"]["game_title"]
+    page_lines = []
+    for page_name, page_stat in page_stats.items():
+        top_posts = ", ".join(
+            f"{post['title']}({post['comment_count']} comments)"
+            for post in page_stat.get("top_posts", [])
+        ) or "없음"
+        page_lines.append(
+            f"- {page_name}: 게시글 {page_stat.get('posts', 0)}건, 댓글 {page_stat.get('comments', 0)}건, "
+            f"주요 키워드 {', '.join(page_stat.get('keywords', [])) or '없음'}, "
+            f"댓글 많은 게시글 {top_posts}"
+        )
+
+    all_posts = [post for page_data in page_results for post in page_data.get("posts", [])]
+    all_comments = [comment for page_data in page_results for comment in page_data.get("comments", [])]
+    top_posts_text = "\n".join(
+        f"- {item['page_name']}: {item['title']} ({item['comment_count']} comments)"
+        for item in stats.get("top_posts", [])
+    ) or "- 없음"
+    top_commenters = ", ".join(f"{name}({count})" for name, count in stats.get("top_commenters", [])) or "없음"
+    keywords = ", ".join(stats.get("keywords", [])) or "없음"
+    samples = format_facebook_samples(all_posts, all_comments, min(60, config["openai"]["max_input_messages"]))
+    return f"""
+다음은 {game_title} Facebook 페이지의 일간 리포트 데이터입니다.
+
+[기본 정보]
+- 기준일: {report_date}
+- 수집 구간: {window_label}
+
+[핵심 지표]
+- 총 게시글 수: {stats.get('total_posts', 0)}
+- 총 댓글 수: {stats.get('total_comments', 0)}
+- 주요 댓글 작성자: {top_commenters}
+- 주요 키워드: {keywords}
+
+[페이지별 현황]
+{chr(10).join(page_lines) or '- 수집 페이지 없음'}
+
+[댓글이 많이 달린 게시글 Top]
+{top_posts_text}
+
+[샘플]
+{samples or '없음'}
+
+운영팀이 바로 참고할 수 있도록 한국어로 간결하고 실무적으로 작성하세요.
+
+## 일간 요약
+- 전체 분위기:
+- 핵심 해석:
+
+## 페이지별 반응
+- 
+
+## 주요 게시글
+- 
+
+## 댓글 반응 분석
+- 
+
+## 운영 액션 제안
+- 즉시 확인 필요:
+- 다음 게시/댓글 대응:
+""".strip()
+
+
+def build_facebook_page_prompt(
+    config: dict[str, Any],
+    page_name: str,
+    page_stat: dict[str, Any],
+    posts: list[dict[str, Any]],
+    comments: list[dict[str, Any]],
+    report_date: str,
+    window_label: str,
+) -> str:
+    top_posts = ", ".join(
+        f"{post['title']}({post['comment_count']} comments)"
+        for post in page_stat.get("top_posts", [])
+    ) or "없음"
+    top_commenters = ", ".join(f"{name}({count})" for name, count in page_stat.get("top_commenters", [])) or "없음"
+    keywords = ", ".join(page_stat.get("keywords", [])) or "없음"
+    samples = format_facebook_samples(posts, comments, 40)
+    return f"""
+다음은 Facebook 페이지 '{page_name}'의 일간 리포트 데이터입니다.
+
+[기본 정보]
+- 기준일: {report_date}
+- 수집 구간: {window_label}
+
+[페이지 지표]
+- 게시글 수: {page_stat.get('posts', 0)}
+- 댓글 수: {page_stat.get('comments', 0)}
+- 주요 댓글 작성자: {top_commenters}
+- 주요 키워드: {keywords}
+- 댓글 많은 게시글: {top_posts}
+
+[샘플]
+{samples or '없음'}
+
+운영팀이 참고할 수 있도록 한국어로 간결하게 작성하세요.
+
+## 페이지 요약
+- 분위기:
+- 핵심 해석:
+
+## 주요 포인트
+- 
+- 
+
+## 운영 메모
+- 즉시 확인:
+- 다음 대응:
+""".strip()
 
 
 def format_category_counts(config: dict[str, Any], stats: dict[str, Any]) -> str:
@@ -850,13 +1369,20 @@ def extract_responses_output_text(response: Any) -> str:
     return ""
 
 
-def analyze_text(config: dict[str, Any], prompt: str) -> str:
-    client = OpenAI(api_key=config["openai"]["api_key"])
+def analyze_text(config: dict[str, Any], prompt: str, system_prompt: str | None = None) -> str:
+    client = OpenAI(
+        api_key=config["openai"]["api_key"],
+        timeout=float(config["openai"].get("timeout_seconds", 90)),
+    )
+    system_text = system_prompt or (
+        "당신은 Discord 커뮤니티 리포트를 작성하는 운영 분석가입니다. "
+        "과장 없이 실행 가능한 인사이트, 명확한 추세, 실무적인 다음 액션을 한국어로 간결하게 정리하세요."
+    )
     base_max_output_tokens = int(config["openai"].get("max_output_tokens", 1200))
     request_kwargs = {
         "model": config["openai"]["model"],
         "input": [
-            {"role": "system", "content": [{"type": "input_text", "text": "당신은 Discord 커뮤니티 리포트를 작성하는 운영 분석가입니다. 과장 없이 실행 가능한 인사이트, 명확한 추세, 실무적인 다음 액션을 한국어로 간결하게 정리하세요."}]},
+            {"role": "system", "content": [{"type": "input_text", "text": system_text}]},
             {"role": "user", "content": [{"type": "input_text", "text": prompt}]},
         ],
         "max_output_tokens": base_max_output_tokens,
@@ -873,7 +1399,7 @@ def analyze_text(config: dict[str, Any], prompt: str) -> str:
     return analysis_text or "분석 결과가 없습니다."
 
 
-def safe_analyze_text(config: dict[str, Any], prompt: str) -> str:
+def safe_analyze_text(config: dict[str, Any], prompt: str, system_prompt: str | None = None) -> str:
     fallback_text = (
         "## AI 분석 사용 불가\n"
         "- OpenAI API 요청이 실패하여 자동 요약을 생성하지 못했습니다.\n"
@@ -883,12 +1409,15 @@ def safe_analyze_text(config: dict[str, Any], prompt: str) -> str:
         "- 이번 실행에서는 AI 분석 대신 대체 문구가 사용되었습니다."
     )
     try:
-        return analyze_text(config, prompt)
+        return analyze_text(config, prompt, system_prompt=system_prompt)
     except RateLimitError as exc:
         log.error("OpenAI rate limit/quota error: %s", exc)
         return fallback_text
     except (APIConnectionError, APITimeoutError, APIError) as exc:
         log.error("OpenAI API error: %s", exc)
+        return fallback_text
+    except Exception as exc:
+        log.error("Unexpected OpenAI error: %s", exc)
         return fallback_text
 
 
@@ -970,6 +1499,64 @@ def build_weekly_html(config: dict[str, Any], week_label: str, total_messages: i
     return f"<!DOCTYPE html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Discord 주간 리포트</title></head><body style='margin:0;padding:24px;background:#eef3f8;font-family:Malgun Gothic,Arial,sans-serif;color:#243648'><div style='max-width:860px;margin:0 auto;background:#fff;border:1px solid #d8e3ef;border-radius:16px;overflow:hidden'>{banner}<div style='padding:22px 26px'><div style='display:grid;grid-template-columns:260px 1fr;gap:18px;align-items:start'><div style='background:#f8fbff;border:1px solid #e1ecf8;border-radius:12px;padding:16px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>포함 일자</h2><ul style='margin:0 0 0 18px;padding:0'>{dates_html}</ul></div><div style='background:#fff;border:1px solid #e6edf5;border-radius:12px;padding:18px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>AI 요약</h2><div style='font-size:14px;color:#2d3b4d'>{markdown_to_html(analysis_text)}</div></div></div></div></div></body></html>"
 
 
+def build_facebook_page_cards(page_stats: dict[str, dict[str, Any]], page_analyses: dict[str, str]) -> str:
+    cards = []
+    for page_name, stats in page_stats.items():
+        top_posts_html = "".join(
+            f"<li style='margin:4px 0'>{html.escape(post['title'])} ({post['comment_count']})</li>"
+            for post in stats.get("top_posts", [])
+        ) or "<li>없음</li>"
+        cards.append(
+            f"""<div style="background:#fff;border:1px solid #dfe9f4;border-radius:14px;padding:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+<h3 style="margin:0;font-size:18px;color:#1f3f66">{html.escape(page_name)}</h3>
+<span style="background:#edf4fb;color:#24486f;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700">posts {stats.get('posts', 0)} / comments {stats.get('comments', 0)}</span>
+</div>
+<div style="margin-top:10px;font-size:13px;line-height:1.6;color:#42576b">
+<div><strong>주요 댓글 작성자:</strong> {html.escape(', '.join(f'{n}({c})' for n, c in stats.get('top_commenters', [])) or '없음')}</div>
+<div><strong>주요 키워드:</strong> {html.escape(', '.join(stats.get('keywords', [])) or '없음')}</div>
+<div style="margin-top:8px"><strong>댓글 많은 게시글</strong><ul style="margin:6px 0 0 18px;padding:0">{top_posts_html}</ul></div>
+</div>
+<div style="margin-top:12px;padding-top:12px;border-top:1px solid #eef3f8;font-size:14px;color:#2d3b4d">{markdown_to_html(page_analyses.get(page_name, '분석 결과가 없습니다.'))}</div>
+</div>"""
+        )
+    return "".join(cards)
+
+
+def build_facebook_daily_html(
+    config: dict[str, Any],
+    report_date: str,
+    window_label: str,
+    stats: dict[str, Any],
+    analysis_text: str,
+    page_stats: dict[str, dict[str, Any]],
+    page_analyses: dict[str, str],
+) -> str:
+    top_commenters_html = "".join(
+        f"<li style='margin:4px 0'>{html.escape(name)} ({count})</li>"
+        for name, count in stats.get("top_commenters", [])
+    ) or "<li>없음</li>"
+    top_posts_rows = "".join(
+        f"<tr><td style='padding:8px 10px;border-bottom:1px solid #eef2f7'>{html.escape(item['page_name'])}</td><td style='padding:8px 10px;border-bottom:1px solid #eef2f7'>{html.escape(item['title'])}</td><td style='padding:8px 10px;border-bottom:1px solid #eef2f7;text-align:right'>{item['comment_count']}</td></tr>"
+        for item in stats.get("top_posts", [])
+    ) or "<tr><td colspan='3' style='padding:8px 10px'>없음</td></tr>"
+    page_rows = "".join(
+        f"<tr><td style='padding:8px 10px;border-bottom:1px solid #eef2f7'>{html.escape(page_name)}</td><td style='padding:8px 10px;border-bottom:1px solid #eef2f7;text-align:right'>{stats.get('page_post_counts', {}).get(page_name, 0)}</td><td style='padding:8px 10px;border-bottom:1px solid #eef2f7;text-align:right'>{stats.get('page_comment_counts', {}).get(page_name, 0)}</td></tr>"
+        for page_name in page_stats
+    ) or "<tr><td colspan='3' style='padding:8px 10px'>없음</td></tr>"
+    keywords = ", ".join(html.escape(word) for word in stats.get("keywords", [])) or "없음"
+    banner = build_summary_banner(
+        f"{config['report']['game_title']} Facebook 일간 리포트",
+        f"기준일: {report_date} | 구간: {window_label}",
+        [
+            ("게시글", str(stats.get("total_posts", 0))),
+            ("댓글", str(stats.get("total_comments", 0))),
+            ("페이지", str(len(page_stats))),
+        ],
+    )
+    return f"<!DOCTYPE html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Facebook 일간 리포트</title></head><body style='margin:0;padding:24px;background:#eef3f8;font-family:Malgun Gothic,Arial,sans-serif;color:#243648'><div style='max-width:980px;margin:0 auto;background:#fff;border:1px solid #d8e3ef;border-radius:16px;overflow:hidden'>{banner}<div style='padding:22px 26px'><div style='display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start'><div style='background:#f8fbff;border:1px solid #e1ecf8;border-radius:12px;padding:16px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>페이지별 통계</h2><table style='width:100%;border-collapse:collapse;font-size:14px'><tr><th style='padding:8px 10px;border-bottom:1px solid #d9e6f4;text-align:left'>페이지</th><th style='padding:8px 10px;border-bottom:1px solid #d9e6f4;text-align:right'>게시글</th><th style='padding:8px 10px;border-bottom:1px solid #d9e6f4;text-align:right'>댓글</th></tr>{page_rows}</table></div><div style='background:#f8fbff;border:1px solid #e1ecf8;border-radius:12px;padding:16px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>댓글 작성자 / 키워드</h2><ul style='margin:0 0 12px 18px;padding:0'>{top_commenters_html}</ul><div style='font-size:14px;line-height:1.6'><strong>주요 키워드</strong> {keywords}</div></div></div><div style='margin-top:18px;background:#fff;border:1px solid #e6edf5;border-radius:12px;padding:18px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>AI 요약</h2><div style='font-size:14px;color:#2d3b4d'>{markdown_to_html(analysis_text)}</div></div><div style='margin-top:18px;background:#fff;border:1px solid #e6edf5;border-radius:12px;padding:18px'><h2 style='margin:0 0 10px;font-size:18px;color:#1f3f66'>댓글 많은 게시글</h2><table style='width:100%;border-collapse:collapse;font-size:14px'><tr><th style='padding:8px 10px;border-bottom:1px solid #d9e6f4;text-align:left'>페이지</th><th style='padding:8px 10px;border-bottom:1px solid #d9e6f4;text-align:left'>게시글</th><th style='padding:8px 10px;border-bottom:1px solid #d9e6f4;text-align:right'>댓글 수</th></tr>{top_posts_rows}</table></div><div style='margin-top:18px'><h2 style='margin:0 0 12px;font-size:20px;color:#1f3f66'>페이지별 분석</h2><div style='display:grid;grid-template-columns:1fr 1fr;gap:16px'>{build_facebook_page_cards(page_stats, page_analyses)}</div></div></div></div></body></html>"
+
+
 def write_report_html(path: Path, html_text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(html_text, encoding="utf-8")
@@ -997,6 +1584,12 @@ def get_previous_daily_stats(state: dict[str, Any], report_date: str) -> dict[st
     return entry.get("stats") if entry else None
 
 
+def get_previous_facebook_daily_stats(state: dict[str, Any], report_date: str) -> dict[str, Any] | None:
+    prev_date = (datetime.fromisoformat(report_date) - timedelta(days=1)).date().isoformat()
+    entry = state.get("facebook_daily_reports", {}).get(prev_date)
+    return entry.get("stats") if entry else None
+
+
 def compute_week_window(report_date_str: str) -> tuple[str, list[str]]:
     week_end = datetime.fromisoformat(report_date_str).date()
     week_start = week_end - timedelta(days=6)
@@ -1016,6 +1609,11 @@ def should_send_weekly(config: dict[str, Any], run_local_dt: datetime, force_sen
 def build_daily_subject(config: dict[str, Any], report_date: str) -> str:
     prefix = config["email"].get("subject_prefix", "[Blackshot] Discord Report")
     return f"{prefix} [일간] {report_date}"
+
+
+def build_facebook_daily_subject(config: dict[str, Any], report_date: str) -> str:
+    prefix = config["email"].get("subject_prefix", "[Blackshot] Community Report")
+    return f"{prefix} [Facebook 일간] {report_date}"
 
 
 def build_weekly_subject(config: dict[str, Any], week_label: str) -> str:
@@ -1120,6 +1718,129 @@ def main() -> None:
         }
         mark_seen_messages(fresh_messages, state)
         save_state(state)
+
+    if config.get("facebook", {}).get("enabled"):
+        facebook_daily_entry = state.get("facebook_daily_reports", {}).get(report_date)
+        facebook_daily_already_sent = False if args.rebuild_daily else bool(facebook_daily_entry and facebook_daily_entry.get("sent"))
+        facebook_pages, facebook_errors = collect_facebook_data(config, after_dt, before_dt)
+        if facebook_errors:
+            failed_entry = dict(facebook_daily_entry or {})
+            failed_entry.update({
+                "date": report_date,
+                "window_mode": window["window_mode"],
+                "window_label": window_label,
+                "last_run_at": now_local.isoformat(),
+                "last_error": "; ".join(facebook_errors),
+                "last_error_at": now_local.isoformat(),
+            })
+            failed_entry.setdefault("sent", False)
+            state.setdefault("facebook_daily_reports", {})[report_date] = failed_entry
+            save_state(state)
+            log.warning("Facebook 일간 리포트를 건너뜁니다. 수집 실패: %s", failed_entry["last_error"])
+        else:
+            facebook_stats = build_facebook_stats(facebook_pages)
+            facebook_page_stats = build_facebook_page_stats(facebook_pages)
+            current_facebook_item_ids = facebook_item_ids(facebook_pages)
+            previous_facebook_item_ids = [
+                str(item_id)
+                for item_id in (facebook_daily_entry or {}).get("item_ids", [])
+            ]
+            existing_page_analyses = (facebook_daily_entry or {}).get("page_analyses", {})
+            reuse_existing_facebook_analysis = (
+                not args.rebuild_daily
+                and facebook_daily_entry is not None
+                and current_facebook_item_ids == previous_facebook_item_ids
+                and bool((facebook_daily_entry or {}).get("analysis_text"))
+                and set(facebook_page_stats.keys()).issubset(set(existing_page_analyses.keys()))
+            )
+
+            if reuse_existing_facebook_analysis:
+                facebook_analysis = facebook_daily_entry.get("analysis_text", "")
+                facebook_page_analyses = existing_page_analyses
+            elif facebook_stats.get("total_items", 0) > 0:
+                facebook_analysis = safe_analyze_text(
+                    config,
+                    build_facebook_daily_prompt(
+                        config,
+                        report_date,
+                        window_label,
+                        facebook_stats,
+                        facebook_page_stats,
+                        facebook_pages,
+                    ),
+                    system_prompt=facebook_analysis_system_prompt(),
+                )
+                facebook_page_analyses = {}
+                for page_data in facebook_pages:
+                    page_name = page_data["page_name"]
+                    page_posts = page_data.get("posts", [])
+                    page_comments = page_data.get("comments", [])
+                    if page_posts or page_comments:
+                        facebook_page_analyses[page_name] = safe_analyze_text(
+                            config,
+                            build_facebook_page_prompt(
+                                config,
+                                page_name,
+                                facebook_page_stats.get(page_name, {}),
+                                page_posts,
+                                page_comments,
+                                report_date,
+                                window_label,
+                            ),
+                            system_prompt=facebook_analysis_system_prompt(),
+                        )
+                    else:
+                        facebook_page_analyses[page_name] = "## 페이지 요약\n- 분위기: 신규 활동 없음\n- 핵심 해석: 선택한 구간에서 수집된 게시글/댓글이 없습니다."
+            else:
+                facebook_analysis = "## 일간 요약\n- 전체 분위기: 신규 활동 없음\n- 핵심 해석: 선택한 구간에서 수집된 Facebook 게시글/댓글이 없습니다."
+                facebook_page_analyses = {
+                    page_data["page_name"]: "## 페이지 요약\n- 분위기: 신규 활동 없음\n- 핵심 해석: 선택한 구간에서 이 페이지에 수집된 게시글/댓글이 없습니다."
+                    for page_data in facebook_pages
+                }
+
+            facebook_daily_html = build_facebook_daily_html(
+                config,
+                report_date,
+                window_label,
+                facebook_stats,
+                facebook_analysis,
+                facebook_page_stats,
+                facebook_page_analyses,
+            )
+            facebook_daily_path = FACEBOOK_DAILY_DIR / f"report_{report_date.replace('-', '')}.html"
+            if config["report"].get("save_html", True):
+                write_report_html(facebook_daily_path, facebook_daily_html)
+            send_facebook_daily = (
+                bool(config["report"].get("daily_send_enabled", True))
+                and bool(config["facebook"].get("send_daily_email", True))
+                and (args.force_send_daily or not facebook_daily_already_sent)
+            )
+            if send_facebook_daily:
+                send_email(config, build_facebook_daily_subject(config, report_date), facebook_daily_html)
+            elif not bool(config["report"].get("daily_send_enabled", True)):
+                log.info("Facebook 일간 메일 발송을 건너뜁니다. 설정에서 daily_send_enabled=false 입니다.")
+            elif not bool(config["facebook"].get("send_daily_email", True)):
+                log.info("Facebook 일간 메일 발송을 건너뜁니다. 설정에서 facebook.send_daily_email=false 입니다.")
+            elif facebook_daily_already_sent and not args.force_send_daily:
+                log.info("Facebook 일간 메일 발송을 건너뜁니다. 이미 sent=true 상태라 HTML/state만 최신화합니다.")
+            else:
+                log.info("Facebook 일간 메일 발송을 건너뜁니다. 강제 발송 조건을 만족하지 않습니다.")
+
+            facebook_entry = {
+                "date": report_date,
+                "window_mode": window["window_mode"],
+                "window_label": window_label,
+                "stats": facebook_stats,
+                "page_stats": facebook_page_stats,
+                "page_analyses": facebook_page_analyses,
+                "analysis_text": facebook_analysis,
+                "html_path": str(facebook_daily_path),
+                "sent": facebook_daily_already_sent or send_facebook_daily,
+                "last_run_at": now_local.isoformat(),
+                "item_ids": current_facebook_item_ids,
+            }
+            state.setdefault("facebook_daily_reports", {})[report_date] = facebook_entry
+            save_state(state)
 
     if should_send_weekly(config, now_local, args.force_send_weekly):
         week_label, included_dates = compute_week_window(report_date)

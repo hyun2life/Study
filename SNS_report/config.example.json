@@ -15,6 +15,15 @@
       ]
     }
   },
+  "facebook": {
+    "enabled": false,
+    "page_access_token": "",
+    "send_daily_email": true,
+    "graph_api_version": "v23.0",
+    "pages": [
+      { "page_id": "PAGE_ID_1", "name": "Official Facebook Page" }
+    ]
+  },
   "openai": {
     "api_key": "",
     "model": "gpt-5",
@@ -29,7 +38,7 @@
     "sender_address": "",
     "sender_password": "",
     "recipients": [],
-    "subject_prefix": "[ProjectName] Discord Report"
+    "subject_prefix": "[ProjectName] Community Report"
   },
   "report": {
     "game_title": "ProjectName",

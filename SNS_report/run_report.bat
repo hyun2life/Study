@@ -10,20 +10,21 @@ cd /d "%~dp0"
 if not exist logs mkdir logs
 if not exist reports mkdir reports
 if not exist reports\daily mkdir reports\daily
+if not exist reports\facebook_daily mkdir reports\facebook_daily
 if not exist reports\weekly mkdir reports\weekly
 
-set "LOG_FILE=logs\manual_run.log"
+set "LOG_FILE=logs\scheduler.log"
 
 echo =============================================================== >> "%LOG_FILE%"
-echo [%date% %time%] Manual rebuild run started >> "%LOG_FILE%"
+echo [%date% %time%] Scheduler run started >> "%LOG_FILE%"
 
 set "PYTHON_EXE=%LocalAppData%\Python\bin\python.exe"
 if exist "%PYTHON_EXE%" (
-  "%PYTHON_EXE%" -X utf8 discord_report.py --rebuild-daily --force-send-daily >> "%LOG_FILE%" 2>&1
+  "%PYTHON_EXE%" -X utf8 discord_report.py >> "%LOG_FILE%" 2>&1
 ) else (
-  python -X utf8 discord_report.py --rebuild-daily --force-send-daily >> "%LOG_FILE%" 2>&1
+  python -X utf8 discord_report.py >> "%LOG_FILE%" 2>&1
 )
 
-echo [%date% %time%] Manual rebuild run finished with exit code %ERRORLEVEL% >> "%LOG_FILE%"
+echo [%date% %time%] Scheduler run finished with exit code %ERRORLEVEL% >> "%LOG_FILE%"
 
 endlocal

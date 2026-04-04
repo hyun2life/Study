@@ -1,9 +1,9 @@
-Discord Report/config.json
-Discord Report/.env
-Discord Report/.env.*
-!Discord Report/.env.example
-Discord Report/state.json
-Discord Report/logs/
-Discord Report/reports/
-Discord Report/__pycache__/
+SNS_report/config.json
+SNS_report/.env
+SNS_report/.env.*
+!SNS_report/.env.example
+SNS_report/state.json
+SNS_report/logs/
+SNS_report/reports/
+SNS_report/__pycache__/
 *.pyc
