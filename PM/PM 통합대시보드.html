@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>게임 개발 PM 통합 대시보드</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --surface: rgba(255, 255, 255, 0.88);
+      --surface-strong: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: rgba(148, 163, 184, 0.22);
+      --navy: #1e293b;
+      --blue: #2563eb;
+      --blue-soft: #dbeafe;
+      --green: #16a34a;
+      --green-soft: #dcfce7;
+      --amber: #d97706;
+      --amber-soft: #fef3c7;
+      --red: #dc2626;
+      --red-soft: #fee2e2;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+      --shadow-lg: 0 18px 40px rgba(15, 23, 42, 0.08);
+      --radius-xl: 24px;
+      --radius-lg: 18px;
+      --radius-pill: 999px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.07), transparent 28%),
+        radial-gradient(circle at top right, rgba(15, 23, 42, 0.05), transparent 24%),
+        var(--bg);
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 18px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding-top: 4px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      padding: 6px 10px;
+      border-radius: var(--radius-pill);
+      background: rgba(255,255,255,0.65);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.16;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .subtitle {
+      margin: 10px 0 0;
+      color: #475569;
+      font-size: 15px;
+      line-height: 1.55;
+      max-width: 720px;
+    }
+    .badge {
+      background: linear-gradient(135deg, #0f172a, #334155);
+      color: white;
+      padding: 9px 14px;
+      border-radius: var(--radius-pill);
+      font-size: 12px;
+      white-space: nowrap;
+      box-shadow: var(--shadow-sm);
+    }
+    .grid-kpi {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .grid-main, .grid-bottom {
+      display: grid;
+      gap: 18px;
+    }
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius-xl);
+      padding: 18px;
+      box-shadow: var(--shadow-sm), var(--shadow-lg);
+      border: 1px solid rgba(255,255,255,0.6);
+      backdrop-filter: blur(14px);
+    }
+    .card h2 {
+      margin: 0 0 14px;
+      font-size: 20px;
+      letter-spacing: -0.02em;
+    }
+    .kpi-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .kpi-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #ffffff, #eef4ff);
+      border: 1px solid rgba(37, 99, 235, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+    }
+    .trend {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--green);
+      background: rgba(22, 163, 74, 0.08);
+      padding: 5px 8px;
+      border-radius: var(--radius-pill);
+    }
+    .kpi-label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .kpi-value {
+      font-size: 30px;
+      font-weight: 800;
+      margin: 5px 0;
+      letter-spacing: -0.03em;
+    }
+    .kpi-sub {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .stage-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      scrollbar-width: none;
+    }
+    .stage-tabs::-webkit-scrollbar { display: none; }
+    .stage-tabs button {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.78);
+      color: #334155;
+      border-radius: var(--radius-pill);
+      padding: 10px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.18s ease;
+    }
+    .stage-tabs button.active {
+      background: linear-gradient(135deg, #0f172a, #334155);
+      color: white;
+      border-color: transparent;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+    }
+    .stage-panel {
+      margin-top: 12px;
+      background: rgba(248, 250, 252, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+    .stage-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .stage-name {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .stage-desc {
+      margin: 6px 0 0;
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.55;
+    }
+    .status {
+      padding: 7px 11px;
+      border-radius: var(--radius-pill);
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid;
+      white-space: nowrap;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
+    }
+    .status.안정 { background: var(--green-soft); color: #15803d; border-color: #bbf7d0; }
+    .status.주의 { background: var(--amber-soft); color: #b45309; border-color: #fde68a; }
+    .status.위험 { background: var(--red-soft); color: #b91c1c; border-color: #fecaca; }
+    .progress-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: #475569;
+    }
+    .progress {
+      width: 100%;
+      height: 10px;
+      background: #e2e8f0;
+      border-radius: var(--radius-pill);
+      overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(15,23,42,0.08);
+    }
+    .progress > div {
+      height: 100%;
+      background: linear-gradient(90deg, #1d4ed8, #3b82f6);
+      border-radius: var(--radius-pill);
+    }
+    .two-col {
+      display: grid;
+      gap: 12px;
+    }
+    .subcard {
+      background: rgba(255,255,255,0.95);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+    .subcard h3 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+    .list {
+      display: grid;
+      gap: 8px;
+    }
+    .list-item {
+      font-size: 14px;
+      color: #334155;
+      line-height: 1.5;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .list-item .icon {
+      min-width: 18px;
+      opacity: 0.95;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .summary-box {
+      background: rgba(248,250,252,0.9);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 14px;
+    }
+    .summary-title {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .summary-value {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .red { color: var(--red); }
+    .amber { color: var(--amber); }
+    .orange { color: #ea580c; }
+    .sky { color: #0284c7; }
+    .team-list {
+      display: grid;
+      gap: 10px;
+    }
+    .team-item {
+      background: rgba(248,250,252,0.9);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 14px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .team-name {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .team-note {
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.5;
+    }
+    .decision-box {
+      border-radius: 20px;
+      padding: 15px;
+      border: 1px solid;
+      font-size: 14px;
+      line-height: 1.55;
+      box-shadow: var(--shadow-sm);
+    }
+    .decision-box strong { display: block; margin-bottom: 4px; }
+    .green-box { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+    .yellow-box { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    .red-box { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+
+    @media (min-width: 768px) {
+      .container { padding: 28px; gap: 22px; }
+      .grid-kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .grid-main { grid-template-columns: 1.1fr 0.9fr; }
+      .grid-bottom { grid-template-columns: 1fr; }
+      .two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      h1 { font-size: 42px; }
+      .kpi-value { font-size: 34px; }
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="header">
+      <div>
+        <div class="eyebrow">모바일 대시보드 샘플</div>
+        <h1>게임 개발 PM 통합 대시보드</h1>
+        <p class="subtitle">일정, QA, 릴리즈, 운영 리스크를 한 화면에서 관리하는 개발PM 관점 예시</p>
+      </div>
+      <div class="badge">Game Title</div>
+    </section>
+
+    <section class="grid-kpi" id="kpiGrid"></section>
+
+    <section class="grid-main">
+      <article class="card">
+        <h2>프로젝트 단계 현황</h2>
+        <div class="stage-tabs" id="stageTabs"></div>
+        <div class="stage-panel">
+          <div class="stage-top">
+            <div>
+              <h3 class="stage-name" id="stageName"></h3>
+              <p class="stage-desc" id="stageDesc"></p>
+            </div>
+            <div class="status" id="stageStatus"></div>
+          </div>
+
+          <div>
+            <div class="progress-row">
+              <span>진행률</span>
+              <strong id="stageProgressText"></strong>
+            </div>
+            <div class="progress"><div id="stageProgressBar"></div></div>
+          </div>
+
+          <div class="two-col">
+            <div class="subcard">
+              <h3>주요 리스크</h3>
+              <div class="list" id="riskList"></div>
+            </div>
+            <div class="subcard">
+              <h3>권장 액션</h3>
+              <div class="list" id="actionList"></div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <div style="display:grid; gap:16px;">
+        <article class="card">
+          <h2>이슈 요약</h2>
+          <div class="summary-grid" id="issueSummary"></div>
+        </article>
+
+        <article class="card">
+          <h2>팀 상태</h2>
+          <div class="team-list" id="teamList"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="grid-bottom">
+      <article class="card">
+        <h2>릴리즈 판단 포인트</h2>
+        <div style="display:grid; gap:12px;">
+          <div class="decision-box green-box">
+            <strong>가능</strong>
+            크리티컬 버그 0~1건, QA 통과율 80% 이상, Blocked 이슈 최소화
+          </div>
+          <div class="decision-box yellow-box">
+            <strong>조건부 가능</strong>
+            핵심 기능 안정화 필요, 핫픽스 계획 동반 시 진행 가능
+          </div>
+          <div class="decision-box red-box">
+            <strong>보류</strong>
+            진행 불가 버그 존재, 결제·로그인·진행 데이터 영향 이슈 포함
+          </div>
+        </div>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    const stageData = {
+      "기획": {
+        설명: "로드맵, 목표, 요구사항, 우선순위를 정리하는 단계",
+        상태: "안정",
+        진행률: 100,
+        주요리스크: ["요구사항 변경 가능성", "범위 증가", "의사결정 지연"],
+        액션: ["핵심 목표 확정", "범위 조정", "릴리즈 목표 정의"]
+      },
+      "스프린트": {
+        설명: "작업을 분해하고 담당자 및 일정 단위로 계획하는 단계",
+        상태: "주의",
+        진행률: 82,
+        주요리스크: ["과도한 작업 배정", "의존성 누락", "QA 일정 미반영"],
+        액션: ["티켓 우선순위 재정렬", "의존성 체크", "QA 슬롯 확보"]
+      },
+      "개발": {
+        설명: "기능 구현과 내부 검증이 진행되는 단계",
+        상태: "주의",
+        진행률: 68,
+        주요리스크: ["작업 지연", "Blocked 증가", "기술 부채 누적"],
+        액션: ["Blocked 이슈 해소", "중간 점검", "리뷰 대기 최소화"]
+      },
+      "QA": {
+        설명: "테스트, 버그 수정, 재검증을 반복하는 단계",
+        상태: "위험",
+        진행률: 54,
+        주요리스크: ["크리티컬 버그", "재오픈 증가", "릴리즈 지연"],
+        액션: ["우선순위 재정의", "크리티컬 버그 우선 처리", "회귀 테스트 진행"]
+      },
+      "릴리즈": {
+        설명: "빌드 안정화와 최종 배포 준비 단계",
+        상태: "안정",
+        진행률: 76,
+        주요리스크: ["막판 이슈 발생", "배포 체크리스트 누락"],
+        액션: ["릴리즈 노트 정리", "배포 체크", "핫픽스 플랜 준비"]
+      },
+      "라이브 운영": {
+        설명: "배포 후 운영, 지표 모니터링, 장애 대응 단계",
+        상태: "안정",
+        진행률: 91,
+        주요리스크: ["서버 장애", "유저 불만 증가", "이벤트 이슈"],
+        액션: ["실시간 모니터링", "이슈 분류", "핫픽스 우선순위 관리"]
+      }
+    };
+
+    const kpis = [
+      { label: "일정 달성률", value: "82%", sub: "목표 대비 진행", icon: "⏱️", trend: "+6%" },
+      { label: "Blocked 이슈", value: "7건", sub: "즉시 해소 필요", icon: "⚠️", trend: "-2건" },
+      { label: "QA 통과율", value: "74%", sub: "이번 빌드 기준", icon: "🛡️", trend: "+8%" },
+      { label: "릴리즈 준비도", value: "76%", sub: "배포 체크리스트 반영", icon: "🚀", trend: "+12%" }
+    ];
+
+    const issueSummary = [
+      { title: "크리티컬 버그", count: 3, cls: "red" },
+      { title: "리뷰 대기", count: 5, cls: "amber" },
+      { title: "QA 재오픈", count: 4, cls: "orange" },
+      { title: "운영 이슈", count: 2, cls: "sky" }
+    ];
+
+    const teamStatus = [
+      { team: "기획", status: "안정", note: "요구사항 확정 완료" },
+      { team: "클라이언트", status: "주의", note: "2개 작업 Blocked" },
+      { team: "서버", status: "안정", note: "API 연동 진행 중" },
+      { team: "QA", status: "위험", note: "크리티컬 버그 재현 확인" }
+    ];
+
+    const stageTabs = document.getElementById("stageTabs");
+    const stageName = document.getElementById("stageName");
+    const stageDesc = document.getElementById("stageDesc");
+    const stageStatus = document.getElementById("stageStatus");
+    const stageProgressText = document.getElementById("stageProgressText");
+    const stageProgressBar = document.getElementById("stageProgressBar");
+    const riskList = document.getElementById("riskList");
+    const actionList = document.getElementById("actionList");
+
+    let activeStage = "QA";
+
+    function renderKPIs() {
+      document.getElementById("kpiGrid").innerHTML = kpis.map(item => `
+        <article class="card">
+          <div class="kpi-top">
+            <div class="kpi-icon">${item.icon}</div>
+            <div class="trend">${item.trend}</div>
+          </div>
+          <div class="kpi-label">${item.label}</div>
+          <div class="kpi-value">${item.value}</div>
+          <div class="kpi-sub">${item.sub}</div>
+        </article>
+      `).join("");
+    }
+
+    function renderStageTabs() {
+      stageTabs.innerHTML = Object.keys(stageData).map(stage => `
+        <button class="${stage === activeStage ? "active" : ""}" onclick="setStage('${stage}')">${stage}</button>
+      `).join("");
+    }
+
+    function renderStage() {
+      const current = stageData[activeStage];
+      stageName.textContent = activeStage;
+      stageDesc.textContent = current.설명;
+      stageStatus.textContent = current.상태;
+      stageStatus.className = `status ${current.상태}`;
+      stageProgressText.textContent = `${current.진행률}%`;
+      stageProgressBar.style.width = `${current.진행률}%`;
+
+      riskList.innerHTML = current.주요리스크.map(item => `
+        <div class="list-item"><span class="icon">⚠️</span><span>${item}</span></div>
+      `).join("");
+
+      actionList.innerHTML = current.액션.map(item => `
+        <div class="list-item"><span class="icon">✅</span><span>${item}</span></div>
+      `).join("");
+    }
+
+    function renderIssueSummary() {
+      document.getElementById("issueSummary").innerHTML = issueSummary.map(item => `
+        <div class="summary-box">
+          <div class="summary-title">${item.title}</div>
+          <div class="summary-value ${item.cls}">${item.count}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderTeamStatus() {
+      document.getElementById("teamList").innerHTML = teamStatus.map(item => `
+        <div class="team-item">
+          <div>
+            <div class="team-name">${item.team}</div>
+            <div class="team-note">${item.note}</div>
+          </div>
+          <div class="status ${item.status}">${item.status === "안정" ? "정상" : item.status}</div>
+        </div>
+      `).join("");
+    }
+
+    function setStage(stage) {
+      activeStage = stage;
+      renderStageTabs();
+      renderStage();
+    }
+
+    window.setStage = setStage;
+
+    renderKPIs();
+    renderStageTabs();
+    renderStage();
+    renderIssueSummary();
+    renderTeamStatus();
+  </script>
+</body>
+</html>

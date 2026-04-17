@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Development PM Role Map</title>
+  <style>
+    :root{
+      --bg:#f4f7fb;
+      --bg2:#eef4ff;
+      --surface:rgba(255,255,255,.88);
+      --surface-strong:#ffffff;
+      --text:#0f172a;
+      --muted:#64748b;
+      --line:rgba(148,163,184,.22);
+      --line-strong:rgba(100,116,139,.26);
+      --navy:#0f172a;
+      --slate:#334155;
+      --blue:#2563eb;
+      --blue-soft:#dbeafe;
+      --purple:#7c3aed;
+      --purple-soft:#ede9fe;
+      --green:#16a34a;
+      --green-soft:#dcfce7;
+      --amber:#d97706;
+      --amber-soft:#fef3c7;
+      --red:#dc2626;
+      --red-soft:#fee2e2;
+      --teal:#0f766e;
+      --teal-soft:#ccfbf1;
+      --shadow-sm:0 1px 2px rgba(15,23,42,.04);
+      --shadow-lg:0 18px 40px rgba(15,23,42,.08);
+      --radius-xl:26px;
+      --radius-lg:20px;
+      --radius-md:16px;
+      --radius-sm:12px;
+      --radius-pill:999px;
+    }
+
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(37,99,235,.08), transparent 26%),
+        radial-gradient(circle at top right, rgba(124,58,237,.06), transparent 24%),
+        linear-gradient(180deg, var(--bg2), var(--bg));
+      letter-spacing:-.01em;
+    }
+
+    .container{
+      max-width:1180px;
+      margin:0 auto;
+      padding:20px 16px 40px;
+      display:grid;
+      gap:18px;
+    }
+
+    .hero{
+      display:grid;
+      gap:12px;
+      padding-top:8px;
+    }
+
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      width:max-content;
+      padding:7px 12px;
+      border-radius:var(--radius-pill);
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.66);
+      backdrop-filter:blur(10px);
+      color:var(--muted);
+      font-size:12px;
+      font-weight:600;
+    }
+
+    h1{
+      margin:0;
+      font-size:30px;
+      line-height:1.12;
+      letter-spacing:-.04em;
+      font-weight:800;
+    }
+
+    .hero p{
+      margin:0;
+      color:#475569;
+      font-size:15px;
+      line-height:1.58;
+      max-width:760px;
+    }
+
+    .surface{
+      background:var(--surface);
+      border:1px solid rgba(255,255,255,.65);
+      box-shadow:var(--shadow-sm), var(--shadow-lg);
+      border-radius:var(--radius-xl);
+      backdrop-filter:blur(14px);
+    }
+
+    .nav-wrap{
+      position:sticky;
+      top:0;
+      z-index:20;
+      padding-top:2px;
+      background:linear-gradient(180deg, rgba(244,247,251,.92), rgba(244,247,251,.62), rgba(244,247,251,0));
+      backdrop-filter:blur(8px);
+    }
+
+    .tabbar{
+      display:flex;
+      gap:8px;
+      overflow:auto;
+      padding:8px;
+      scrollbar-width:none;
+    }
+    .tabbar::-webkit-scrollbar{display:none}
+
+    .tab{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.78);
+      color:var(--slate);
+      border-radius:var(--radius-pill);
+      padding:10px 15px;
+      font-size:13px;
+      font-weight:700;
+      white-space:nowrap;
+      cursor:pointer;
+      transition:.18s ease;
+    }
+    .tab:hover{transform:translateY(-1px)}
+    .tab.active{
+      background:linear-gradient(135deg, #0f172a, #334155);
+      color:#fff;
+      border-color:transparent;
+      box-shadow:0 10px 24px rgba(15,23,42,.16);
+    }
+
+    .view{display:none}
+    .view.active{display:block}
+
+    .section{
+      padding:18px;
+    }
+
+    .sl{
+      font-size:12px;
+      font-weight:700;
+      letter-spacing:.08em;
+      color:var(--muted);
+      text-transform:uppercase;
+      margin:0 0 8px;
+    }
+
+    .sh{
+      margin:0 0 6px;
+      font-size:24px;
+      font-weight:800;
+      letter-spacing:-.03em;
+    }
+
+    .sd{
+      margin:0 0 18px;
+      color:#475569;
+      font-size:14px;
+      line-height:1.58;
+    }
+
+    .card{
+      background:rgba(255,255,255,.92);
+      border:1px solid var(--line);
+      border-radius:var(--radius-lg);
+      padding:16px;
+      box-shadow:var(--shadow-sm);
+    }
+
+    .grid-2,.grid-3,.grid-4{
+      display:grid;
+      gap:12px;
+    }
+
+    .mini{
+      background:rgba(248,250,252,.92);
+      border:1px solid var(--line);
+      border-radius:var(--radius-md);
+      padding:14px;
+      transition:.18s ease;
+    }
+    .mini:hover{transform:translateY(-1px)}
+
+    .metric{
+      display:grid;
+      gap:6px;
+    }
+    .metric .label{
+      color:var(--muted);
+      font-size:12px;
+      font-weight:600;
+    }
+    .metric .value{
+      font-size:26px;
+      font-weight:800;
+      letter-spacing:-.03em;
+    }
+    .metric .desc{
+      color:#475569;
+      font-size:12px;
+      line-height:1.45;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 10px;
+      border-radius:var(--radius-pill);
+      font-size:11px;
+      font-weight:700;
+      border:1px solid transparent;
+      margin:2px 6px 2px 0;
+    }
+    .pill.blue{background:var(--blue-soft); color:#1d4ed8; border-color:#bfdbfe}
+    .pill.purple{background:var(--purple-soft); color:#6d28d9; border-color:#ddd6fe}
+    .pill.green{background:var(--green-soft); color:#15803d; border-color:#bbf7d0}
+    .pill.amber{background:var(--amber-soft); color:#b45309; border-color:#fde68a}
+    .pill.red{background:var(--red-soft); color:#b91c1c; border-color:#fecaca}
+    .pill.teal{background:var(--teal-soft); color:#0f766e; border-color:#99f6e4}
+
+    /* role hub */
+    .hub-wrap{
+      display:grid;
+      gap:14px;
+    }
+
+    svg{
+      width:100%;
+      height:auto;
+      display:block;
+      overflow:visible;
+    }
+
+    .hub-node{
+      cursor:pointer;
+      transition:.18s ease;
+    }
+    .hub-node .box{
+      fill:rgba(255,255,255,.94);
+      stroke:rgba(148,163,184,.26);
+      stroke-width:1;
+      filter:drop-shadow(0 6px 16px rgba(15,23,42,.08));
+    }
+    .hub-node .main{
+      fill:rgba(255,255,255,.96);
+      stroke:#0f172a;
+      stroke-width:1.2;
+      filter:drop-shadow(0 8px 20px rgba(15,23,42,.1));
+    }
+    .hub-node:hover .box,
+    .hub-node.active .box{
+      stroke:#2563eb;
+      fill:#f8fbff;
+    }
+    .hub-node:hover .main,
+    .hub-node.active .main{
+      stroke:#2563eb;
+    }
+    .node-title{
+      font-size:14px;
+      font-weight:800;
+      fill:var(--text);
+    }
+    .node-sub{
+      font-size:11px;
+      fill:var(--muted);
+    }
+    .hub-line{
+      stroke:#cbd5e1;
+      stroke-width:1.2;
+      stroke-dasharray:0;
+    }
+
+    .detail-panel{
+      background:rgba(248,250,252,.88);
+      border:1px solid var(--line);
+      border-radius:var(--radius-lg);
+      padding:16px;
+      min-height:128px;
+      display:grid;
+      gap:8px;
+    }
+    .detail-panel h3{
+      margin:0;
+      font-size:18px;
+      font-weight:800;
+      letter-spacing:-.02em;
+    }
+    .detail-panel p{
+      margin:0;
+      color:#475569;
+      font-size:14px;
+      line-height:1.65;
+    }
+
+    /* decision */
+    .decision-card{
+      cursor:pointer;
+      transition:.18s ease;
+      background:rgba(255,255,255,.92);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:16px;
+    }
+    .decision-card:hover{transform:translateY(-1px)}
+    .decision-card.active{
+      border-color:#0f172a;
+      background:linear-gradient(180deg, #ffffff, #f8fafc);
+      box-shadow:0 10px 20px rgba(15,23,42,.08);
+    }
+    .decision-card .mh{
+      margin:0 0 6px;
+      font-size:15px;
+      font-weight:800;
+      letter-spacing:-.02em;
+    }
+    .decision-card .ms{
+      margin:0;
+      font-size:13px;
+      color:#475569;
+      line-height:1.5;
+    }
+
+    /* sprint */
+    .week-hdr{
+      display:grid;
+      grid-template-columns:88px repeat(10,minmax(0,1fr));
+      gap:4px;
+      margin-bottom:6px;
+      align-items:end;
+    }
+    .week-hdr span{
+      text-align:center;
+      color:var(--muted);
+      font-size:11px;
+      font-weight:700;
+    }
+    .week-hdr span:first-child{visibility:hidden}
+
+    .sprint-row{
+      display:grid;
+      grid-template-columns:88px 1fr;
+      gap:10px;
+      align-items:center;
+      margin-bottom:10px;
+    }
+    .sprint-label{
+      color:#334155;
+      font-size:12px;
+      font-weight:700;
+      line-height:1.3;
+    }
+    .sprint-bars{
+      display:grid;
+      grid-template-columns:repeat(10,minmax(0,1fr));
+      gap:4px;
+    }
+    .sbar{
+      height:26px;
+      border-radius:8px;
+      background:#e2e8f0;
+      transition:.18s ease;
+    }
+    .sbar:hover{transform:scale(1.04)}
+    .legend{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px 12px;
+      margin-top:14px;
+      color:#475569;
+      font-size:12px;
+      font-weight:600;
+    }
+    .legend span{display:inline-flex; align-items:center; gap:6px}
+    .legend i{
+      display:inline-block;
+      width:10px;
+      height:10px;
+      border-radius:3px;
+    }
+
+    /* competency bars */
+    .bar-wrap{display:grid; gap:6px; margin-bottom:14px}
+    .bar-label{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      font-size:13px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .bar-label strong{
+      font-size:14px;
+      letter-spacing:-.01em;
+    }
+    .bar-label span:last-child{
+      color:var(--muted);
+      font-size:12px;
+    }
+    .bar-bg{
+      width:100%;
+      height:12px;
+      background:#e2e8f0;
+      border-radius:999px;
+      overflow:hidden;
+      box-shadow:inset 0 1px 2px rgba(15,23,42,.06);
+    }
+    .bar-fill{
+      height:100%;
+      width:0%;
+      border-radius:999px;
+      transition:width .7s cubic-bezier(.4,0,.2,1);
+    }
+
+    .highlight{
+      margin-top:14px;
+      padding:15px;
+      border-radius:18px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.92);
+    }
+    .highlight h4{
+      margin:0 0 10px;
+      font-size:15px;
+      font-weight:800;
+    }
+
+    @media (min-width: 768px){
+      .container{padding:28px 24px 48px; gap:20px}
+      h1{font-size:42px}
+      .section{padding:22px}
+      .grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <div class="eyebrow">Development PM Portfolio · Interactive Role Map</div>
+      <h1>게임 개발 PM 업무 방향성</h1>
+      <p>개발 PM의 역할을 단순 일정 관리가 아닌 <strong>조율, 의사결정, 품질 유지, 릴리즈 판단</strong>의 관점에서 정리한 인터랙티브 포트폴리오입니다. 역할 허브, 의사결정 구조, 스프린트 리듬, 핵심 역량 프레임워크를 한 화면 안에서 확인할 수 있도록 구성했습니다.</p>
+    </header>
+
+    <div class="nav-wrap">
+      <div class="surface tabbar">
+        <button class="tab active" data-view="v1">역할 허브</button>
+        <button class="tab" data-view="v2">의사결정 구조</button>
+        <button class="tab" data-view="v3">스프린트 사이클</button>
+        <button class="tab" data-view="v4">역량 프레임워크</button>
+      </div>
+    </div>
+
+    <section class="surface section view active" id="v1">
+      <p class="sl">01 — Positioning</p>
+      <h2 class="sh">개발 PM의 역할 허브</h2>
+      <p class="sd">개발 PM은 조직 내 여러 기능 조직의 중심에서 흐름을 맞추는 역할입니다. 각 노드를 선택하면 협업 포인트와 실제 관점을 확인할 수 있습니다.</p>
+
+      <div class="grid-4" style="margin-bottom:14px;">
+        <div class="mini metric">
+          <div class="label">핵심 역할</div>
+          <div class="value">조율</div>
+          <div class="desc">기획, 개발, QA, 운영, 데이터, 경영진 사이의 연결점</div>
+        </div>
+        <div class="mini metric">
+          <div class="label">중점 관리</div>
+          <div class="value">리스크</div>
+          <div class="desc">일정 지연보다 흐름이 끊기는 지점을 먼저 파악</div>
+        </div>
+        <div class="mini metric">
+          <div class="label">품질 관점</div>
+          <div class="value">릴리즈 판단</div>
+          <div class="desc">현재 상태에서 실제로 내놓을 수 있는 품질인지 확인</div>
+        </div>
+        <div class="mini metric">
+          <div class="label">협업 방식</div>
+          <div class="value">크로스팀</div>
+          <div class="desc">부서별 목적을 하나의 프로젝트 흐름으로 정렬</div>
+        </div>
+      </div>
+
+      <div class="hub-wrap">
+        <div class="card">
+          <svg viewBox="0 0 760 430" role="img" aria-label="개발 PM 역할 허브 다이어그램">
+            <defs>
+              <linearGradient id="centerFill" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="100%" stop-color="#eff6ff"/>
+              </linearGradient>
+            </defs>
+
+            <line class="hub-line" x1="380" y1="214" x2="380" y2="92"></line>
+            <line class="hub-line" x1="334" y1="184" x2="222" y2="120"></line>
+            <line class="hub-line" x1="426" y1="184" x2="538" y2="120"></line>
+            <line class="hub-line" x1="334" y1="246" x2="222" y2="312"></line>
+            <line class="hub-line" x1="426" y1="246" x2="538" y2="312"></line>
+            <line class="hub-line" x1="380" y1="274" x2="380" y2="338"></line>
+
+            <g class="hub-node active" data-role="pm">
+              <circle class="main" cx="380" cy="230" r="62" fill="url(#centerFill)"></circle>
+              <text class="node-title" x="380" y="222" text-anchor="middle">개발 PM</text>
+              <text class="node-sub" x="380" y="242" text-anchor="middle">흐름 · 품질 · 조율</text>
+            </g>
+
+            <g class="hub-node" data-role="exec">
+              <rect class="box" x="298" y="52" width="164" height="50" rx="14"></rect>
+              <text class="node-title" x="380" y="75" text-anchor="middle">경영진 / 스튜디오 헤드</text>
+              <text class="node-sub" x="380" y="92" text-anchor="middle">전략 방향 · 예산 · 우선순위</text>
+            </g>
+
+            <g class="hub-node" data-role="design">
+              <rect class="box" x="118" y="94" width="188" height="52" rx="14"></rect>
+              <text class="node-title" x="212" y="118" text-anchor="middle">기획 / 디자인팀</text>
+              <text class="node-sub" x="212" y="136" text-anchor="middle">스펙 정의 · 콘텐츠 기획</text>
+            </g>
+
+            <g class="hub-node" data-role="dev">
+              <rect class="box" x="454" y="94" width="188" height="52" rx="14"></rect>
+              <text class="node-title" x="548" y="118" text-anchor="middle">개발 / 엔지니어링</text>
+              <text class="node-sub" x="548" y="136" text-anchor="middle">구현 · 기술 부채 · 일정 영향</text>
+            </g>
+
+            <g class="hub-node" data-role="ops">
+              <rect class="box" x="118" y="286" width="188" height="52" rx="14"></rect>
+              <text class="node-title" x="212" y="310" text-anchor="middle">라이브 / 운영팀</text>
+              <text class="node-sub" x="212" y="328" text-anchor="middle">패치 · 이벤트 · CS 피드백</text>
+            </g>
+
+            <g class="hub-node" data-role="qa">
+              <rect class="box" x="454" y="286" width="188" height="52" rx="14"></rect>
+              <text class="node-title" x="548" y="310" text-anchor="middle">QA / 품질관리</text>
+              <text class="node-sub" x="548" y="328" text-anchor="middle">버그 트래킹 · 릴리즈 검증</text>
+            </g>
+
+            <g class="hub-node" data-role="data">
+              <rect class="box" x="294" y="338" width="172" height="50" rx="14"></rect>
+              <text class="node-title" x="380" y="361" text-anchor="middle">데이터 / 분석팀</text>
+              <text class="node-sub" x="380" y="378" text-anchor="middle">지표 분석 · A/B 테스트</text>
+            </g>
+          </svg>
+        </div>
+
+        <div class="detail-panel" id="roleDetail">
+          <h3>개발 PM</h3>
+          <p>개발 PM은 조직의 각 기능 조직을 하나의 프로젝트 흐름으로 연결하는 중심 조율자입니다. 일정 관리 자체보다, 어디에서 흐름이 끊기고 품질 리스크가 생기는지를 먼저 파악하고 조정하는 역할에 가깝습니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="surface section view" id="v2">
+      <p class="sl">02 — Decision Making</p>
+      <h2 class="sh">개발 PM의 의사결정 구조</h2>
+      <p class="sd">개발 PM의 판단은 단순 일정 조정이 아니라, 스펙·트레이드오프·릴리즈·방향 전환까지 포함합니다. 카드를 선택하면 실제 상황에서 어떤 판단을 내려야 하는지 볼 수 있습니다.</p>
+
+      <div class="grid-2">
+        <button class="decision-card active" data-det="d1">
+          <p class="mh">스펙 결정 (Spec)</p>
+          <p class="ms">무엇을 만들 것인가 — 기능의 범위와 우선순위를 정의</p>
+        </button>
+        <button class="decision-card" data-det="d2">
+          <p class="mh">트레이드오프 결정 (Trade-off)</p>
+          <p class="ms">일정·품질·범위 간 균형을 조율하는 판단</p>
+        </button>
+        <button class="decision-card" data-det="d3">
+          <p class="mh">릴리즈 결정 (Release)</p>
+          <p class="ms">언제 내보낼 것인가 — 리스크와 준비도 기준 판단</p>
+        </button>
+        <button class="decision-card" data-det="d4">
+          <p class="mh">방향 전환 결정 (Pivot)</p>
+          <p class="ms">데이터와 피드백을 기반으로 전략 수정 여부 판단</p>
+        </button>
+      </div>
+
+      <div class="detail-panel" style="margin-top:14px;">
+        <h3 id="decisionTitle">스펙 결정 (Spec)</h3>
+        <p id="decisionBody">무엇을 빌드할지를 정의합니다. 기획팀의 아이디어, 데이터팀의 유저 인사이트, 개발팀의 기술 제약을 종합해 PRD를 작성합니다. 기능 하나를 추가하는 것보다, 그것이 전체 경험과 로드맵에 어떤 의미를 갖는지 정리하는 과정입니다.</p>
+      </div>
+    </section>
+
+    <section class="surface section view" id="v3">
+      <p class="sl">03 — Sprint Rhythm</p>
+      <h2 class="sh">2주 스프린트 사이클</h2>
+      <p class="sd">게임 개발 PM의 전형적인 2주 리듬을 시각화했습니다. 특정 업무만 반복하는 것이 아니라, 기획·개발 협업·운영 대응·분석·커뮤니케이션이 동시에 흐릅니다.</p>
+
+      <div class="grid-3" style="margin-bottom:14px;">
+        <div class="mini metric">
+          <div class="label">핵심 루틴</div>
+          <div class="value">우선순위 조정</div>
+          <div class="desc">매일 이슈와 의존성을 다시 확인하고 작업 순서를 조정</div>
+        </div>
+        <div class="mini metric">
+          <div class="label">주요 리스크</div>
+          <div class="value">후반 QA 집중</div>
+          <div class="desc">QA가 늦게 붙으면 버그가 몰리며 릴리즈 품질 저하</div>
+        </div>
+        <div class="mini metric">
+          <div class="label">PM 시점</div>
+          <div class="value">흐름 유지</div>
+          <div class="desc">작업보다 흐름 단위로 보고 병목을 해소하는 방식</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="week-hdr">
+          <span></span>
+          <span>월</span><span>화</span><span>수</span><span>목</span><span>금</span>
+          <span>월</span><span>화</span><span>수</span><span>목</span><span>금</span>
+        </div>
+        <div id="sprintChart"></div>
+        <div class="legend">
+          <span><i style="background:#6d28d9"></i>스펙·기획</span>
+          <span><i style="background:#2563eb"></i>개발 협업</span>
+          <span><i style="background:#0f766e"></i>운영·이슈</span>
+          <span><i style="background:#d97706"></i>데이터 분석</span>
+          <span><i style="background:#be185d"></i>보고·커뮤니케이션</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="surface section view" id="v4">
+      <p class="sl">04 — Capability Framework</p>
+      <h2 class="sh">게임 개발 PM 핵심 역량 프레임워크</h2>
+      <p class="sd">개발 PM에게 필요한 역량을 5개 축으로 정리했습니다. 시장 이해, 기술 구조 파악, 데이터 기반 판단, 커뮤니케이션, 실행 관리가 균형 있게 연결되어야 합니다.</p>
+
+      <div class="card">
+        <div id="compBars"></div>
+      </div>
+
+      <div class="highlight">
+        <h4>특히 중요하게 보는 역량</h4>
+        <div>
+          <span class="pill blue">로그라이크 장르 이해</span>
+          <span class="pill purple">서브컬처 유저 인사이트</span>
+          <span class="pill amber">라이브 서비스 지표 분석</span>
+          <span class="pill amber">리텐션 병목 진단</span>
+          <span class="pill green">크로스팀 조율</span>
+          <span class="pill green">운영 신뢰 회복 기획</span>
+          <span class="pill red">글로벌 시장 감각</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const roleMap = {
+      pm: {
+        h: '개발 PM',
+        b: '개발 PM은 조직의 각 기능 조직을 하나의 프로젝트 흐름으로 연결하는 중심 조율자입니다. 일정 관리 자체보다, 어디에서 흐름이 끊기고 품질 리스크가 생기는지를 먼저 파악하고 조정하는 역할에 가깝습니다.'
+      },
+      exec: {
+        h: '경영진 / 스튜디오 헤드',
+        b: '개발 PM은 경영진과의 커뮤니케이션에서 프로젝트의 현재 상태를 단순 진행률이 아닌 리스크와 의사결정 포인트 중심으로 정리해야 합니다. 중요한 것은 “얼마나 했는가”보다 “지금 무엇을 결정해야 하는가”를 명확히 보여주는 것입니다.'
+      },
+      design: {
+        h: '기획 / 디자인팀',
+        b: '기획팀과는 무엇을 만들 것인지, 그리고 왜 그것이 필요한지를 정의하는 과정에서 가장 긴밀하게 협업합니다. 개발 PM은 요구사항을 정리하고 범위를 조정하며, 구현 가능한 스펙으로 연결하는 역할을 수행합니다.'
+      },
+      dev: {
+        h: '개발 / 엔지니어링',
+        b: '개발팀과의 협업에서는 단순 일정 체크보다 의존성과 기술 제약을 이해하는 것이 중요합니다. 구현 순서, 병목 구간, 기술 부채가 전체 일정과 품질에 어떤 영향을 주는지 구조적으로 보는 관점이 필요합니다.'
+      },
+      ops: {
+        h: '라이브 / 운영팀',
+        b: '운영팀과는 패치 일정, 이벤트 적용, 유저 피드백, CS 이슈 등을 연결합니다. 개발 PM은 운영 현장에서 들어오는 문제를 다음 스프린트와 로드맵에 반영할 수 있도록 우선순위를 정리해야 합니다.'
+      },
+      qa: {
+        h: 'QA / 품질관리',
+        b: 'QA는 개발 후반의 검수 단계가 아니라, 실제 릴리즈 품질을 결정하는 핵심 파트입니다. 개발 PM은 QA를 조기에 참여시키고, 크리티컬 버그와 재오픈 이슈를 중심으로 릴리즈 가능성을 판단해야 합니다.'
+      },
+      data: {
+        h: '데이터 / 분석팀',
+        b: '데이터팀과는 리텐션, 전환율, 세션 길이, 이벤트 반응 등을 해석하며 협업합니다. 수치 그 자체보다, 지금의 문제를 어떤 방향 전환이나 우선순위 변경으로 연결할지 판단하는 것이 중요합니다.'
+      }
+    };
+
+    const decisionMap = {
+      d1: {
+        h: '스펙 결정 (Spec)',
+        b: '무엇을 빌드할지를 정의합니다. 기획팀의 아이디어, 데이터팀의 유저 인사이트, 개발팀의 기술 제약을 종합해 PRD를 작성합니다. 기능 하나를 추가하는 것보다, 그것이 전체 경험과 로드맵에 어떤 의미를 갖는지 정리하는 과정입니다.'
+      },
+      d2: {
+        h: '트레이드오프 결정 (Trade-off)',
+        b: '일정(Time), 품질(Quality), 범위(Scope)는 동시에 모두 지키기 어렵습니다. 개발 PM은 유저 경험에 직접 영향을 주는 핵심 품질은 유지하고, 상대적으로 영향이 적은 요소를 조정하는 방식으로 균형을 잡아야 합니다.'
+      },
+      d3: {
+        h: '릴리즈 결정 (Release)',
+        b: '언제 출시할 것인가를 판단합니다. 버그 임계치, QA 통과율, 운영 준비도, 마케팅 일정, 경쟁 상황까지 함께 봐야 합니다. 결국 핵심 질문은 “지금 상태에서 유저에게 이 경험을 내보내도 되는가”입니다.'
+      },
+      d4: {
+        h: '방향 전환 결정 (Pivot)',
+        b: 'D30 리텐션 급락, 커뮤니티 반발, 예상보다 낮은 전환율 같은 신호가 나타났을 때 기존 계획을 유지할지 수정할지 결정합니다. 계획을 지키는 것보다, 더 나은 방향으로 전환하는 것이 필요한 순간을 읽는 역량입니다.'
+      }
+    };
+
+    const sprintData = [
+      { label:'스펙·기획', color:'#6d28d9', days:[1,1,1,0,0,0,0,1,1,0] },
+      { label:'개발 협업', color:'#2563eb', days:[0,1,1,1,0,1,1,1,0,0] },
+      { label:'운영·이슈', color:'#0f766e', days:[1,0,0,1,1,0,1,0,1,1] },
+      { label:'데이터 분석', color:'#d97706', days:[0,0,1,1,0,0,0,1,1,1] },
+      { label:'보고·커뮤니케이션', color:'#be185d', days:[1,0,0,0,1,1,0,0,0,1] }
+    ];
+
+    const compData = [
+      { label:'제품 전략', subs:['시장·장르 분석','로드맵 설계','경쟁사 벤치마크'], val:85, color:'linear-gradient(90deg,#7c3aed,#8b5cf6)' },
+      { label:'기술 이해', subs:['아키텍처 기초','기술 부채 판단','빌드 파이프라인'], val:65, color:'linear-gradient(90deg,#1d4ed8,#3b82f6)' },
+      { label:'데이터 분석', subs:['지표 설계·해석','A/B 테스트','리텐션 퍼널 분석'], val:80, color:'linear-gradient(90deg,#b45309,#f59e0b)' },
+      { label:'커뮤니케이션', subs:['이해관계자 관리','리스크 보고','팀 갈등 조율'], val:90, color:'linear-gradient(90deg,#0f766e,#14b8a6)' },
+      { label:'실행 관리', subs:['스프린트 운영','릴리즈 관리','이슈 트래킹'], val:75, color:'linear-gradient(90deg,#be185d,#ec4899)' }
+    ];
+
+    // Tabs
+    const tabs = document.querySelectorAll('.tab');
+    const views = document.querySelectorAll('.view');
+    tabs.forEach(tab=>{
+      tab.addEventListener('click', ()=>{
+        tabs.forEach(t=>t.classList.remove('active'));
+        views.forEach(v=>v.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.view).classList.add('active');
+      });
+    });
+
+    // Role hub detail
+    const roleDetail = document.getElementById('roleDetail');
+    const roleNodes = document.querySelectorAll('.hub-node');
+    roleNodes.forEach(node=>{
+      node.addEventListener('click', ()=>{
+        roleNodes.forEach(n=>n.classList.remove('active'));
+        node.classList.add('active');
+        const d = roleMap[node.dataset.role];
+        roleDetail.innerHTML = `<h3>${d.h}</h3><p>${d.b}</p>`;
+      });
+    });
+
+    // Decision detail
+    const decisionCards = document.querySelectorAll('.decision-card');
+    const decisionTitle = document.getElementById('decisionTitle');
+    const decisionBody = document.getElementById('decisionBody');
+    decisionCards.forEach(card=>{
+      card.addEventListener('click', ()=>{
+        decisionCards.forEach(c=>c.classList.remove('active'));
+        card.classList.add('active');
+        const d = decisionMap[card.dataset.det];
+        decisionTitle.textContent = d.h;
+        decisionBody.textContent = d.b;
+      });
+    });
+
+    // Sprint chart
+    const sprintChart = document.getElementById('sprintChart');
+    sprintData.forEach(row=>{
+      const wrap = document.createElement('div');
+      wrap.className = 'sprint-row';
+      const label = document.createElement('div');
+      label.className = 'sprint-label';
+      label.textContent = row.label;
+      const bars = document.createElement('div');
+      bars.className = 'sprint-bars';
+
+      row.days.forEach(on=>{
+        const bar = document.createElement('div');
+        bar.className = 'sbar';
+        bar.style.background = on ? row.color : '#e2e8f0';
+        bar.style.opacity = on ? '1' : '.42';
+        bars.appendChild(bar);
+      });
+
+      wrap.appendChild(label);
+      wrap.appendChild(bars);
+      sprintChart.appendChild(wrap);
+    });
+
+    // Competency bars
+    const compBars = document.getElementById('compBars');
+    compData.forEach((c, idx)=>{
+      const wrap = document.createElement('div');
+      wrap.className = 'bar-wrap';
+      wrap.innerHTML = `
+        <div class="bar-label">
+          <strong>${c.label}</strong>
+          <span>${c.subs.join(' · ')}</span>
+        </div>
+        <div class="bar-bg">
+          <div class="bar-fill" id="bar-${idx}"></div>
+        </div>
+      `;
+      compBars.appendChild(wrap);
+      const bar = wrap.querySelector('.bar-fill');
+      bar.style.background = c.color;
+      setTimeout(()=>{ bar.style.width = c.val + '%'; }, 140 + idx * 90);
+    });
+  </script>
+</body>
+</html>
