@@ -7,3 +7,4 @@ SNS_report/logs/
 SNS_report/reports/
 SNS_report/__pycache__/
 *.pyc
+/paintjaengi/
