@@ -1,0 +1,12 @@
+Match the reference image as closely as possible in character identity, proportions, outfit details, face design, line quality, and coloring style.
+Keep the father and daughter as the exact same recurring characters in every image, not just a similar style.
+Father details: black hair peeking out, black sunglasses with blue reflections, rosy cheeks, open smiling mouth, blue baseball jersey, and a blue towel draped over his head with thick white stripes.
+Daughter details: black hair in braided pigtails, blue headband, tiny round dot eyes, rosy cheeks, open smiling mouth, white baseball jersey with blue trim, and a small orange bear hair accessory with a round blue button.
+Use the same cute chibi proportions as the reference: large heads, compact bodies, simple hands, friendly front-facing pose.
+Use a scribbled crayon and colored-pencil texture with dense rough strokes, thick black sketchy outlines, and slightly uneven hand-drawn fill.
+Color palette should stay centered on vivid medium blue, white, black, warm peach skin, and small orange accents.
+Background must stay plain white with no shadow and no realistic depth.
+Composition should feel like a Kakao static emoticon: clean silhouette, big readable faces, minimal clutter, and clear Korean lettering.
+The Korean text must look hand-drawn, bold, black, playful, and visually integrated with the characters.
+Do not redesign the characters, outfits, accessories, hair, or facial proportions from image to image.
+Return one finished square sticker-style image.

@@ -8,3 +8,6 @@ SNS_report/reports/
 SNS_report/__pycache__/
 *.pyc
 /paintjaengi/
+daughter-emoticons/__pycache__/
+daughter-emoticons/output/**/*.png
+daughter-emoticons/reference_style.png

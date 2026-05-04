@@ -1,0 +1,37 @@
+[
+  { "no": "01", "text": "좋아!", "prompt": "daughter jumping happily with big smile, arms up, father clapping behind her, Korean text \"좋아!\"" },
+  { "no": "02", "text": "싫어!", "prompt": "daughter turning head away with pouty face, father looking confused, Korean text \"싫어!\"" },
+  { "no": "03", "text": "흥!", "prompt": "daughter crossing arms and looking away, father nervously watching her, Korean text \"흥!\"" },
+  { "no": "04", "text": "몰라~", "prompt": "daughter shrugging shoulders casually, father panicking behind her, Korean text \"몰라~\"" },
+  { "no": "05", "text": "신나!", "prompt": "daughter shaking arms excitedly, father trying to follow her energy, Korean text \"신나!\"" },
+  { "no": "06", "text": "무서워", "prompt": "daughter hiding behind father, father protecting her, Korean text \"무서워\"" },
+  { "no": "07", "text": "화났어!", "prompt": "daughter with puffed cheeks and angry face, father sweating nervously, Korean text \"화났어!\"" },
+  { "no": "08", "text": "울어버린다", "prompt": "daughter about to cry with teary eyes, father panicking, Korean text \"울어버린다\"" },
+
+  { "no": "09", "text": "해줘", "prompt": "daughter confidently holding hand out, father immediately responding, Korean text \"해줘\"" },
+  { "no": "10", "text": "사줘", "prompt": "daughter pointing forward strongly, father opening wallet, Korean text \"사줘\"" },
+  { "no": "11", "text": "안아줘", "prompt": "daughter opening arms, father leaning in to hug, Korean text \"안아줘\"" },
+  { "no": "12", "text": "놀자!", "prompt": "daughter pulling father's hand, father being dragged, Korean text \"놀자!\"" },
+  { "no": "13", "text": "빨리!", "prompt": "daughter stomping feet impatiently, father running toward her, Korean text \"빨리!\"" },
+  { "no": "14", "text": "이거!", "prompt": "daughter pointing clearly, father handing item, Korean text \"이거!\"" },
+  { "no": "15", "text": "안돼!", "prompt": "daughter making X gesture, father stopping suddenly, Korean text \"안돼!\"" },
+  { "no": "16", "text": "또!", "prompt": "daughter insisting again cutely, father exhausted but obeying, Korean text \"또!\"" },
+
+  { "no": "17", "text": "배고파", "prompt": "daughter with wide open mouth, father holding food, Korean text \"배고파\"" },
+  { "no": "18", "text": "졸려...", "prompt": "daughter sleepy and leaning, father carrying her, Korean text \"졸려...\"" },
+  { "no": "19", "text": "집가자", "prompt": "daughter holding father's hand pulling him, father following, Korean text \"집가자\"" },
+  { "no": "20", "text": "씻기싫어", "prompt": "daughter running away, father chasing her, Korean text \"씻기싫어\"" },
+  { "no": "21", "text": "준비끝", "prompt": "daughter standing proudly, father fixing things behind, Korean text \"준비끝\"" },
+  { "no": "22", "text": "심심해", "prompt": "daughter lying bored on ground, father looking helpless, Korean text \"심심해\"" },
+  { "no": "23", "text": "쉬는중", "prompt": "daughter lying comfortably, father collapsing next to her, Korean text \"쉬는중\"" },
+  { "no": "24", "text": "다했어", "prompt": "daughter showing pride, father clapping impressed, Korean text \"다했어\"" },
+
+  { "no": "25", "text": "최고!", "prompt": "daughter giving thumbs up, father cheering, Korean text \"최고!\"" },
+  { "no": "26", "text": "대박!", "prompt": "daughter surprised with open mouth, father shocked, Korean text \"대박!\"" },
+  { "no": "27", "text": "오케이", "prompt": "daughter nodding confidently, father thumbs up, Korean text \"오케이\"" },
+  { "no": "28", "text": "미안...", "prompt": "daughter looking down apologetically, father forgiving, Korean text \"미안...\"" },
+  { "no": "29", "text": "고마워", "prompt": "daughter smiling warmly, father touched, Korean text \"고마워\"" },
+  { "no": "30", "text": "축하해!", "prompt": "daughter clapping happily, father celebrating, Korean text \"축하해!\"" },
+  { "no": "31", "text": "사랑해", "prompt": "daughter hugging father, father melting emotionally, Korean text \"사랑해\"" },
+  { "no": "32", "text": "잘했어", "prompt": "daughter praising, father smiling proudly, Korean text \"잘했어\"" }
+]
