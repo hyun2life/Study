@@ -905,6 +905,85 @@
       min-height: 180px;
     }
 
+    .summary-visual {
+      display: grid;
+      gap: 12px;
+    }
+
+    .lane-stack {
+      height: 28px;
+      display: flex;
+      overflow: hidden;
+      border-radius: var(--radius-pill);
+      background: #e2e8f0;
+      border: 1px solid var(--line);
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+    }
+
+    .lane-segment {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      transition: width 0.28s ease;
+    }
+
+    .lane-segment.now {
+      background: #dc2626;
+    }
+
+    .lane-segment.next {
+      background: #2563eb;
+    }
+
+    .lane-segment.hold {
+      background: #16a34a;
+    }
+
+    .type-bars {
+      display: grid;
+      gap: 8px;
+    }
+
+    .type-row,
+    .team-row {
+      display: grid;
+      grid-template-columns: 92px 1fr 36px;
+      gap: 10px;
+      align-items: center;
+      min-height: 34px;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .bar-track {
+      height: 10px;
+      overflow: hidden;
+      border-radius: var(--radius-pill);
+      background: #e2e8f0;
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 0;
+      border-radius: var(--radius-pill);
+      background: linear-gradient(90deg, #60a5fa, #2563eb);
+      transition: width 0.28s ease;
+    }
+
+    .bar-fill.risk {
+      background: linear-gradient(90deg, #f87171, #dc2626);
+    }
+
+    .bar-fill.team {
+      background: linear-gradient(90deg, #2dd4bf, #0f766e);
+    }
+
     .summary-list {
       display: grid;
       gap: 8px;
@@ -936,8 +1015,29 @@
       border: 1px solid var(--line);
       border-radius: var(--radius-lg);
       padding: 15px;
-      min-height: 108px;
+      min-height: 132px;
       box-shadow: var(--shadow-sm);
+    }
+
+    .team-card {
+      display: grid;
+      gap: 11px;
+    }
+
+    .team-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .team-stats span {
+      padding: 5px 8px;
+      border-radius: var(--radius-pill);
+      background: rgba(219, 234, 254, 0.7);
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid #bfdbfe;
     }
 
     .team-card strong,
@@ -954,6 +1054,70 @@
       color: #475569;
       font-size: 13px;
       line-height: 1.55;
+    }
+
+    .timeline {
+      position: relative;
+      display: grid;
+      gap: 10px;
+    }
+
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 15px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      background: #cbd5e1;
+    }
+
+    .decision-card {
+      position: relative;
+      padding-left: 46px;
+      min-height: 104px;
+    }
+
+    .decision-dot {
+      position: absolute;
+      left: 7px;
+      top: 18px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 3px solid #fff;
+      background: var(--blue);
+      box-shadow: 0 0 0 1px var(--line-strong);
+      z-index: 1;
+    }
+
+    .decision-card.now .decision-dot {
+      background: var(--red);
+    }
+
+    .decision-card.next .decision-dot {
+      background: var(--blue);
+    }
+
+    .decision-card.hold .decision-dot {
+      background: var(--green);
+    }
+
+    .decision-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 9px;
+    }
+
+    .decision-meta span {
+      padding: 5px 8px;
+      border-radius: var(--radius-pill);
+      background: rgba(248, 250, 252, 0.9);
+      color: #475569;
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid var(--line);
     }
 
     .talk-card strong,
@@ -1833,10 +1997,35 @@
         return acc;
       }, {});
       const typeText = Object.entries(byType).map(([type, count]) => `${type} ${count}`).join(" · ") || "표시 항목 없음";
+      const total = Math.max(visible.length, 1);
+      const laneSegments = [
+        { key: "now", label: "Now", count: grouped.now },
+        { key: "next", label: "Next", count: grouped.next },
+        { key: "hold", label: "Hold", count: grouped.hold }
+      ];
+      const typeBars = Object.entries(byType)
+        .sort((a, b) => b[1] - a[1])
+        .map(([type, count]) => `
+          <div class="type-row">
+            <span>${type}</span>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.max((count / total) * 100, 8)}%"></div></div>
+            <span>${count}</span>
+          </div>
+        `).join("");
 
       summaryPanel.innerHTML = `
-        <div>
+        <div class="summary-visual">
           <span class="badge blue">Sprint 12 Brief</span>
+          <div class="lane-stack" aria-label="레인별 요청 분포">
+            ${laneSegments.map(segment => `
+              <div class="lane-segment ${segment.key}" style="width:${Math.max((segment.count / total) * 100, segment.count ? 10 : 0)}%">
+                ${segment.count ? `${segment.label} ${segment.count}` : ""}
+              </div>
+            `).join("")}
+          </div>
+          <div class="type-bars">
+            ${typeBars || `<div class="empty">표시할 유형 분포가 없습니다.</div>`}
+          </div>
           <div class="summary-list">
             <div class="summary-line"><strong>보드 현황</strong><span>Now ${grouped.now} · Next ${grouped.next} · Hold ${grouped.hold}</span></div>
             <div class="summary-line"><strong>유형 분포</strong><span>${typeText}</span></div>
@@ -1863,12 +2052,27 @@
       const teams = Object.entries(teamMap)
         .sort((a, b) => b[1].count - a[1].count || b[1].risk - a[1].risk)
         .slice(0, 6);
+      const maxCount = Math.max(...teams.map(([, data]) => data.count), 1);
 
       teamGrid.innerHTML = teams.length
         ? teams.map(([team, data]) => `
           <article class="team-card">
             <strong>${team}</strong>
-            <p>요청 ${data.count}건 · Now ${data.now}건 · 고위험 ${data.risk}건</p>
+            <div class="team-row">
+              <span>요청</span>
+              <div class="bar-track"><div class="bar-fill team" style="width:${Math.max((data.count / maxCount) * 100, 8)}%"></div></div>
+              <span>${data.count}</span>
+            </div>
+            <div class="team-row">
+              <span>고위험</span>
+              <div class="bar-track"><div class="bar-fill risk" style="width:${data.count ? Math.max((data.risk / data.count) * 100, data.risk ? 8 : 0) : 0}%"></div></div>
+              <span>${data.risk}</span>
+            </div>
+            <div class="team-stats">
+              <span>Now ${data.now}</span>
+              <span>전체 ${data.count}</span>
+              <span>Risk ${data.risk}</span>
+            </div>
           </article>
         `).join("")
         : `<div class="empty">팀별 병목을 계산할 요청이 없습니다.</div>`;
@@ -1876,12 +2080,20 @@
 
     function renderDecisionLog() {
       decisionLog.innerHTML = decisions.length
-        ? decisions.slice(0, 8).map(item => `
-          <article class="decision-card">
+        ? `<div class="timeline">
+          ${decisions.slice(0, 8).map(item => `
+          <article class="decision-card ${item.lane}">
+            <span class="decision-dot"></span>
             <strong>${item.action}</strong>
-            <p>${item.title}<br />${laneLabel(item.lane)} · ${item.score} · ${item.time}</p>
+            <p>${item.title}</p>
+            <div class="decision-meta">
+              <span>${laneLabel(item.lane)}</span>
+              <span>${item.score}</span>
+              <span>${item.time}</span>
+            </div>
           </article>
-        `).join("")
+        `).join("")}
+        </div>`
         : `<div class="empty">아직 기록된 결정이 없습니다. 판단 근거 영역에서 결정 버튼을 눌러 로그를 남길 수 있습니다.</div>`;
     }
 
