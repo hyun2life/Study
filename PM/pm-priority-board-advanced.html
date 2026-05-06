@@ -278,9 +278,42 @@
     .board-grid,
     .detail-grid,
     .form-grid,
-    .range-grid {
+    .range-grid,
+    .control-grid,
+    .source-grid,
+    .summary-grid,
+    .team-grid,
+    .decision-grid {
       display: grid;
       gap: 12px;
+    }
+
+    .source-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .source-card {
+      min-height: 88px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      box-shadow: var(--shadow-sm);
+      display: grid;
+      gap: 7px;
+      align-content: center;
+    }
+
+    .source-card span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .source-card strong {
+      color: #334155;
+      font-size: 18px;
+      line-height: 1.25;
     }
 
     .metric {
@@ -314,7 +347,8 @@
     }
 
     .tool-panel,
-    .detail-panel {
+    .detail-panel,
+    .summary-panel {
       background: rgba(255, 255, 255, 0.92);
       border: 1px solid var(--line);
       border-radius: var(--radius-lg);
@@ -362,6 +396,30 @@
     .field textarea:focus {
       border-color: rgba(37, 99, 235, 0.48);
       box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+    }
+
+    .control-grid {
+      margin-top: 12px;
+    }
+
+    .toggle-row {
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 11px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.92);
+      color: #334155;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .toggle-row input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--blue);
     }
 
     .range-row {
@@ -462,6 +520,12 @@
     }
 
     .board-toolbar .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .toolbar-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
@@ -717,6 +781,18 @@
       line-height: 1.52;
     }
 
+    .reason {
+      margin: 0;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.45;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      background: rgba(248, 250, 252, 0.88);
+      border: 1px solid var(--line);
+    }
+
     .empty {
       border: 1px dashed var(--line-strong);
       border-radius: var(--radius-md);
@@ -768,6 +844,47 @@
       line-height: 1.55;
     }
 
+    .decision-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .mini-btn {
+      min-height: 34px;
+      padding: 8px 11px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.84);
+      color: #334155;
+      font-size: 12px;
+      font-weight: 800;
+      transition: 0.18s ease;
+    }
+
+    .mini-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .mini-btn.red {
+      background: var(--red-soft);
+      color: #b91c1c;
+      border-color: #fecaca;
+    }
+
+    .mini-btn.blue {
+      background: var(--blue-soft);
+      color: #1d4ed8;
+      border-color: #bfdbfe;
+    }
+
+    .mini-btn.green {
+      background: var(--green-soft);
+      color: #15803d;
+      border-color: #bbf7d0;
+    }
+
     .talk-track,
     .integration-grid {
       display: grid;
@@ -782,6 +899,61 @@
       padding: 15px;
       min-height: 116px;
       box-shadow: var(--shadow-sm);
+    }
+
+    .summary-panel {
+      min-height: 180px;
+    }
+
+    .summary-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .summary-line {
+      min-height: 36px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 9px 11px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(248, 250, 252, 0.86);
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .summary-line strong {
+      color: #334155;
+    }
+
+    .team-card,
+    .decision-card {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 15px;
+      min-height: 108px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .team-card strong,
+    .decision-card strong {
+      display: block;
+      margin-bottom: 7px;
+      color: #334155;
+      font-size: 14px;
+    }
+
+    .team-card p,
+    .decision-card p {
+      margin: 0;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.55;
     }
 
     .talk-card strong,
@@ -851,7 +1023,12 @@
       .range-grid,
       .detail-grid,
       .talk-track,
-      .integration-grid {
+      .integration-grid,
+      .control-grid,
+      .source-grid,
+      .summary-grid,
+      .team-grid,
+      .decision-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
@@ -879,6 +1056,25 @@
       </p>
     </header>
 
+    <section class="source-grid" aria-label="동기화 상태">
+      <article class="source-card">
+        <span>Source</span>
+        <strong>Jira · Linear · CSV Sample</strong>
+      </article>
+      <article class="source-card">
+        <span>Sprint</span>
+        <strong>2026-Q2 Sprint 12</strong>
+      </article>
+      <article class="source-card">
+        <span>Last synced</span>
+        <strong id="syncTime">09:30 KST</strong>
+      </article>
+      <article class="source-card">
+        <span>Review mode</span>
+        <strong>Auto score + PM approval</strong>
+      </article>
+    </section>
+
     <nav class="surface tabbar" aria-label="우선순위 필터">
       <button class="tab active" type="button" data-filter="all">전체</button>
       <button class="tab tab-now" type="button" data-filter="now">Now</button>
@@ -887,6 +1083,42 @@
     </nav>
 
     <section class="grid-4" id="statGrid" aria-label="요약 지표"></section>
+
+    <section class="surface section">
+      <div class="section-head">
+        <div>
+          <h2>검색과 필터</h2>
+          <p>요청 유형, 담당 팀, 리스크 기준으로 보드를 빠르게 좁혀볼 수 있습니다.</p>
+        </div>
+        <span class="badge teal">Control Center</span>
+      </div>
+
+      <div class="control-grid">
+        <div class="field">
+          <label for="searchInput">검색</label>
+          <input id="searchInput" type="search" placeholder="제목, 팀, 메모 검색" />
+        </div>
+        <div class="field">
+          <label for="typeFilter">요청 유형</label>
+          <select id="typeFilter">
+            <option value="all">전체 유형</option>
+            <option value="Feature">Feature</option>
+            <option value="Bug">Bug</option>
+            <option value="Ops">Ops</option>
+            <option value="Experiment">Experiment</option>
+          </select>
+        </div>
+        <label class="toggle-row" for="riskOnly">
+          <input id="riskOnly" type="checkbox" />
+          리스크 4점 이상만 보기
+        </label>
+        <div class="actions" style="margin-top:0;">
+          <button class="btn btn-secondary" id="jiraImportBtn" type="button">Jira 샘플 가져오기</button>
+          <button class="btn btn-secondary" id="csvImportBtn" type="button">CSV 샘플 가져오기</button>
+          <button class="btn btn-primary" id="summaryBtn" type="button">공유 요약 생성</button>
+        </div>
+      </div>
+    </section>
 
     <main class="main-grid">
       <section class="surface section">
@@ -977,7 +1209,10 @@
             <span class="badge blue">Next</span>
             <span class="badge green">Hold</span>
           </div>
-          <span class="badge teal" id="avgScore">Avg 0</span>
+          <div class="toolbar-actions">
+            <span class="badge teal" id="avgScore">Avg 0</span>
+            <span class="badge amber" id="visibleCount">0 shown</span>
+          </div>
         </div>
 
         <div class="board-grid">
@@ -1016,6 +1251,42 @@
       </div>
 
       <div class="detail-panel" id="detailPanel"></div>
+    </section>
+
+    <section class="surface section">
+      <div class="section-head">
+        <div>
+          <h2>공유용 요약</h2>
+          <p>회의나 스프린트 플래닝에 바로 가져갈 수 있는 형태로 현재 보드를 요약합니다.</p>
+        </div>
+        <span class="badge blue">Share Brief</span>
+      </div>
+
+      <div class="summary-panel" id="summaryPanel"></div>
+    </section>
+
+    <section class="surface section">
+      <div class="section-head">
+        <div>
+          <h2>담당 팀별 병목</h2>
+          <p>요청이 어느 팀에 몰려 있는지 확인해 실행 순서와 리소스 논의를 연결합니다.</p>
+        </div>
+        <span class="badge purple">Team Load</span>
+      </div>
+
+      <div class="team-grid" id="teamGrid"></div>
+    </section>
+
+    <section class="surface section">
+      <div class="section-head">
+        <div>
+          <h2>결정 로그</h2>
+          <p>선택한 요청에 대해 유지, 이동, 범위 축소 같은 의사결정 기록을 남깁니다.</p>
+        </div>
+        <span class="badge green">Decision Log</span>
+      </div>
+
+      <div class="decision-grid" id="decisionLog"></div>
     </section>
 
     <section class="surface section">
@@ -1190,9 +1461,84 @@
       effort: -10
     };
 
+    const jiraSampleItems = [
+      {
+        title: "상점 구매 완료 이벤트 누락 수정",
+        type: "Bug",
+        owner: "Server + Data + QA",
+        impact: 5,
+        urgency: 4,
+        value: 5,
+        risk: 5,
+        complexity: 3,
+        effort: 2,
+        source: "Jira",
+        note: "매출 퍼널 데이터가 누락되어 캠페인 성과 판단에 영향을 줍니다."
+      },
+      {
+        title: "시즌 패스 보상 미리보기 개선",
+        type: "Feature",
+        owner: "Design + Client",
+        impact: 4,
+        urgency: 3,
+        value: 5,
+        risk: 2,
+        complexity: 3,
+        effort: 3,
+        source: "Jira",
+        note: "구매 전환에 영향을 줄 수 있어 다음 스프린트 후보로 검토합니다."
+      },
+      {
+        title: "빌드 배포 체크리스트 자동 검증",
+        type: "Ops",
+        owner: "Build + QA + PM",
+        impact: 4,
+        urgency: 4,
+        value: 4,
+        risk: 5,
+        complexity: 2,
+        effort: 2,
+        source: "Jira",
+        note: "배포 누락 리스크를 줄이기 위한 운영 자동화 항목입니다."
+      }
+    ];
+
+    const csvSampleItems = [
+      {
+        title: "커뮤니티 신고 키워드 대시보드",
+        type: "Ops",
+        owner: "Community + Data",
+        impact: 3,
+        urgency: 3,
+        value: 3,
+        risk: 4,
+        complexity: 2,
+        effort: 2,
+        source: "CSV",
+        note: "운영 이슈를 빠르게 분류하기 위한 경량 모니터링 요청입니다."
+      },
+      {
+        title: "복귀 유저 7일 미션 실험",
+        type: "Experiment",
+        owner: "Game Design + Data",
+        impact: 4,
+        urgency: 2,
+        value: 5,
+        risk: 2,
+        complexity: 3,
+        effort: 3,
+        source: "CSV",
+        note: "리텐션 개선 가설을 작게 검증하기 위한 실험 후보입니다."
+      }
+    ];
+
     let items = [];
     let selectedId = null;
     let activeFilter = "all";
+    let searchQuery = "";
+    let typeFilterValue = "all";
+    let riskOnly = false;
+    let decisions = [];
 
     const lanes = {
       now: document.getElementById("lane-now"),
@@ -1204,6 +1550,11 @@
     const detailPanel = document.getElementById("detailPanel");
     const requestCount = document.getElementById("requestCount");
     const avgScore = document.getElementById("avgScore");
+    const visibleCount = document.getElementById("visibleCount");
+    const summaryPanel = document.getElementById("summaryPanel");
+    const teamGrid = document.getElementById("teamGrid");
+    const decisionLog = document.getElementById("decisionLog");
+    const syncTime = document.getElementById("syncTime");
     const fieldRefs = ["impact", "urgency", "value", "risk", "complexity", "effort"];
 
     function cloneBaseItems() {
@@ -1240,11 +1591,46 @@
       return "green";
     }
 
+    function laneKorean(lane) {
+      if (lane === "now") return "즉시 실행";
+      if (lane === "next") return "다음 스프린트";
+      return "추가 검토";
+    }
+
     function typeTone(type) {
       if (type === "Bug") return "문제 해결";
       if (type === "Ops") return "운영 안정화";
       if (type === "Experiment") return "가설 검증";
       return "기능 개선";
+    }
+
+    function sourceLabel(item) {
+      return item.source || "Manual";
+    }
+
+    function reasonLine(item) {
+      if (item.risk >= 5) return "주요 리스크가 높아 선제 대응 필요";
+      if (item.urgency >= 5 && item.impact >= 4) return "긴급도와 사용자 영향이 모두 높음";
+      if (item.value >= 5 && item.effort <= 3) return "비즈니스 가치 대비 공수가 적정";
+      if (item.complexity >= 4 || item.effort >= 4) return "범위 재정의 후 진행 필요";
+      if (item.type === "Experiment") return "작은 실험으로 가설 검증 가능";
+      return "팀 논의를 위한 우선순위 후보";
+    }
+
+    function itemMatchesFilters(item) {
+      const lane = laneFor(item);
+      const text = `${item.title} ${item.type} ${item.owner} ${item.note} ${sourceLabel(item)}`.toLowerCase();
+      const matchesLane = activeFilter === "all" || activeFilter === lane;
+      const matchesType = typeFilterValue === "all" || item.type === typeFilterValue;
+      const matchesRisk = !riskOnly || item.risk >= 4;
+      const matchesSearch = !searchQuery || text.includes(searchQuery.toLowerCase());
+      return matchesLane && matchesType && matchesRisk && matchesSearch;
+    }
+
+    function filteredItems() {
+      return [...items]
+        .filter(itemMatchesFilters)
+        .sort((a, b) => scoreItem(b) - scoreItem(a));
     }
 
     function summarize(item) {
@@ -1312,7 +1698,9 @@
               <span>${item.type}</span>
               <span>${typeTone(item.type)}</span>
               <span>${item.owner}</span>
+              <span>${sourceLabel(item)}</span>
             </div>
+            <p class="reason">${reasonLine(item)}</p>
             <p class="request-note">${item.note}</p>
           </button>
         </article>
@@ -1320,14 +1708,12 @@
     }
 
     function renderBoard() {
-      const sorted = [...items].sort((a, b) => scoreItem(b) - scoreItem(a));
+      const sorted = filteredItems();
       const grouped = { now: [], next: [], hold: [] };
 
       sorted.forEach(item => {
         const lane = laneFor(item);
-        if (activeFilter === "all" || activeFilter === lane) {
-          grouped[lane].push(item);
-        }
+        grouped[lane].push(item);
       });
 
       ["now", "next", "hold"].forEach(lane => {
@@ -1337,6 +1723,7 @@
       });
 
       requestCount.textContent = `${items.length} requests`;
+      visibleCount.textContent = `${sorted.length} shown`;
 
       document.querySelectorAll("[data-action='select']").forEach(button => {
         button.addEventListener("click", () => {
@@ -1359,6 +1746,22 @@
         selectedId = items[0]?.id ?? null;
       }
       renderAll();
+    }
+
+    function addDecision(action) {
+      const current = items.find(item => item.id === selectedId);
+      if (!current) return;
+
+      decisions.unshift({
+        id: Date.now(),
+        title: current.title,
+        action,
+        lane: laneFor(current),
+        score: scoreItem(current),
+        time: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+      });
+
+      renderDecisionLog();
     }
 
     function renderDetail() {
@@ -1384,11 +1787,17 @@
           <span class="badge ${laneTone(lane)}">${laneLabel(lane)} · ${score}</span>
           <h3>${current.title}</h3>
           <p>${current.note}</p>
+          <div class="decision-actions">
+            <button class="mini-btn red" type="button" data-decision="Now 유지">Now 유지</button>
+            <button class="mini-btn blue" type="button" data-decision="Next 이동">Next 이동</button>
+            <button class="mini-btn green" type="button" data-decision="Hold 보류">Hold 보류</button>
+            <button class="mini-btn" type="button" data-decision="범위 축소">범위 축소</button>
+          </div>
         </div>
         <div class="detail-grid">
           <div class="detail-box">
             <strong>우선순위 판단</strong>
-            <p>${notes.priorityReason}</p>
+            <p>${reasonLine(current)}. ${notes.priorityReason}</p>
           </div>
           <div class="detail-box">
             <strong>트레이드오프</strong>
@@ -1404,6 +1813,91 @@
           </div>
         </div>
       `;
+
+      document.querySelectorAll("[data-decision]").forEach(button => {
+        button.addEventListener("click", () => addDecision(button.dataset.decision));
+      });
+    }
+
+    function renderSummary() {
+      const visible = filteredItems();
+      const grouped = { now: 0, next: 0, hold: 0 };
+      visible.forEach(item => {
+        grouped[laneFor(item)] += 1;
+      });
+
+      const topRisk = [...visible].sort((a, b) => b.risk - a.risk || scoreItem(b) - scoreItem(a))[0];
+      const topNow = visible.find(item => laneFor(item) === "now");
+      const byType = visible.reduce((acc, item) => {
+        acc[item.type] = (acc[item.type] || 0) + 1;
+        return acc;
+      }, {});
+      const typeText = Object.entries(byType).map(([type, count]) => `${type} ${count}`).join(" · ") || "표시 항목 없음";
+
+      summaryPanel.innerHTML = `
+        <div>
+          <span class="badge blue">Sprint 12 Brief</span>
+          <div class="summary-list">
+            <div class="summary-line"><strong>보드 현황</strong><span>Now ${grouped.now} · Next ${grouped.next} · Hold ${grouped.hold}</span></div>
+            <div class="summary-line"><strong>유형 분포</strong><span>${typeText}</span></div>
+            <div class="summary-line"><strong>최우선 항목</strong><span>${topNow ? topNow.title : "Now 항목 없음"}</span></div>
+            <div class="summary-line"><strong>주요 리스크</strong><span>${topRisk ? `${topRisk.title} · Risk ${topRisk.risk}` : "리스크 항목 없음"}</span></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTeamLoad() {
+      const teamMap = {};
+      items.forEach(item => {
+        item.owner.split("+").map(team => team.trim()).filter(Boolean).forEach(team => {
+          if (!teamMap[team]) {
+            teamMap[team] = { count: 0, risk: 0, now: 0 };
+          }
+          teamMap[team].count += 1;
+          teamMap[team].risk += item.risk >= 4 ? 1 : 0;
+          teamMap[team].now += laneFor(item) === "now" ? 1 : 0;
+        });
+      });
+
+      const teams = Object.entries(teamMap)
+        .sort((a, b) => b[1].count - a[1].count || b[1].risk - a[1].risk)
+        .slice(0, 6);
+
+      teamGrid.innerHTML = teams.length
+        ? teams.map(([team, data]) => `
+          <article class="team-card">
+            <strong>${team}</strong>
+            <p>요청 ${data.count}건 · Now ${data.now}건 · 고위험 ${data.risk}건</p>
+          </article>
+        `).join("")
+        : `<div class="empty">팀별 병목을 계산할 요청이 없습니다.</div>`;
+    }
+
+    function renderDecisionLog() {
+      decisionLog.innerHTML = decisions.length
+        ? decisions.slice(0, 8).map(item => `
+          <article class="decision-card">
+            <strong>${item.action}</strong>
+            <p>${item.title}<br />${laneLabel(item.lane)} · ${item.score} · ${item.time}</p>
+          </article>
+        `).join("")
+        : `<div class="empty">아직 기록된 결정이 없습니다. 판단 근거 영역에서 결정 버튼을 눌러 로그를 남길 수 있습니다.</div>`;
+    }
+
+    function updateSyncTime() {
+      syncTime.textContent = new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) + " KST";
+    }
+
+    function importItems(sampleItems) {
+      const now = Date.now();
+      const newItems = sampleItems.map((item, index) => ({ ...item, id: now + index }));
+      items = [...newItems, ...items];
+      selectedId = newItems[0]?.id ?? selectedId;
+      activeFilter = "all";
+      updateTabs();
+      updateSyncTime();
+      renderAll();
     }
 
     function syncRangeLabels() {
@@ -1465,7 +1959,14 @@
       items = cloneBaseItems();
       selectedId = items[0]?.id ?? null;
       activeFilter = "all";
+      searchQuery = "";
+      typeFilterValue = "all";
+      riskOnly = false;
+      decisions = [];
       updateTabs();
+      document.getElementById("searchInput").value = "";
+      document.getElementById("typeFilter").value = "all";
+      document.getElementById("riskOnly").checked = false;
       renderAll();
       clearForm();
     }
@@ -1480,6 +1981,9 @@
       renderStats();
       renderBoard();
       renderDetail();
+      renderSummary();
+      renderTeamLoad();
+      renderDecisionLog();
     }
 
     fieldRefs.forEach(name => {
@@ -1491,9 +1995,31 @@
         activeFilter = tab.dataset.filter;
         updateTabs();
         renderBoard();
+        renderSummary();
       });
     });
 
+    document.getElementById("searchInput").addEventListener("input", event => {
+      searchQuery = event.target.value.trim();
+      renderBoard();
+      renderSummary();
+    });
+
+    document.getElementById("typeFilter").addEventListener("change", event => {
+      typeFilterValue = event.target.value;
+      renderBoard();
+      renderSummary();
+    });
+
+    document.getElementById("riskOnly").addEventListener("change", event => {
+      riskOnly = event.target.checked;
+      renderBoard();
+      renderSummary();
+    });
+
+    document.getElementById("jiraImportBtn").addEventListener("click", () => importItems(jiraSampleItems));
+    document.getElementById("csvImportBtn").addEventListener("click", () => importItems(csvSampleItems));
+    document.getElementById("summaryBtn").addEventListener("click", renderSummary);
     document.getElementById("addBtn").addEventListener("click", addItem);
     document.getElementById("resetBtn").addEventListener("click", resetItems);
 
