@@ -198,6 +198,36 @@
       box-shadow: 0 10px 24px rgba(22, 163, 74, 0.16);
     }
 
+    .modebar {
+      display: inline-flex;
+      gap: 8px;
+      padding: 8px;
+      border-radius: var(--radius-pill);
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .mode-tab {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-pill);
+      min-height: 36px;
+      padding: 8px 13px;
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--slate);
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+      transition: 0.18s ease;
+    }
+
+    .mode-tab.active {
+      background: linear-gradient(135deg, #0f172a, #334155);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+    }
+
     .section {
       padding: 18px;
     }
@@ -756,6 +786,12 @@
       font-weight: 700;
     }
 
+    .meta span.confirmed {
+      background: var(--amber-soft);
+      color: #b45309;
+      border-color: #fde68a;
+    }
+
     .request-card.now .meta span {
       background: var(--red-soft);
       color: #b91c1c;
@@ -772,6 +808,12 @@
       background: var(--green-soft);
       color: #15803d;
       border: 1px solid #bbf7d0;
+    }
+
+    .request-card .meta span.confirmed {
+      background: var(--amber-soft);
+      color: #b45309;
+      border: 1px solid #fde68a;
     }
 
     .request-note {
@@ -1361,13 +1403,13 @@
       <section class="surface section">
         <div class="section-head">
           <div>
-            <h2>우선순위 보드</h2>
-            <p>같은 크기의 카드로 요청을 비교하고, 선택한 항목은 아래 판단 근거에 연결됩니다.</p>
-          </div>
-          <span class="badge purple" id="requestCount">0 requests</span>
+          <h2>우선순위 보드</h2>
+          <p>자동 점수는 모델 추천 레인, PM 확정은 결정 액션으로 승인한 최종 레인을 보여줍니다.</p>
         </div>
+        <span class="badge purple" id="requestCount">0 requests</span>
+      </div>
 
-        <div class="board-toolbar">
+      <div class="board-toolbar">
           <div class="legend">
             <span class="badge red">Now</span>
             <span class="badge blue">Next</span>
@@ -1377,6 +1419,14 @@
             <span class="badge teal" id="avgScore">Avg 0</span>
             <span class="badge amber" id="visibleCount">0 shown</span>
           </div>
+        </div>
+
+        <div class="board-toolbar">
+          <div class="modebar" aria-label="보드 운영 모드">
+            <button class="mode-tab active" type="button" data-mode="auto">자동 점수</button>
+            <button class="mode-tab" type="button" data-mode="confirmed">PM 확정</button>
+          </div>
+          <span class="badge blue" id="modeHint">추천 레인 기준</span>
         </div>
 
         <div class="board-grid">
@@ -1703,6 +1753,7 @@
     let typeFilterValue = "all";
     let riskOnly = false;
     let decisions = [];
+    let boardMode = "auto";
 
     const lanes = {
       now: document.getElementById("lane-now"),
@@ -1715,6 +1766,7 @@
     const requestCount = document.getElementById("requestCount");
     const avgScore = document.getElementById("avgScore");
     const visibleCount = document.getElementById("visibleCount");
+    const modeHint = document.getElementById("modeHint");
     const summaryPanel = document.getElementById("summaryPanel");
     const teamGrid = document.getElementById("teamGrid");
     const decisionLog = document.getElementById("decisionLog");
@@ -1741,6 +1793,10 @@
       if (score >= 230 && item.urgency >= 4) return "now";
       if (score >= 180 && item.effort <= 3) return "next";
       return "hold";
+    }
+
+    function effectiveLane(item) {
+      return boardMode === "confirmed" && item.confirmedLane ? item.confirmedLane : laneFor(item);
     }
 
     function laneLabel(lane) {
@@ -1773,6 +1829,7 @@
     }
 
     function reasonLine(item) {
+      if (boardMode === "confirmed" && item.confirmedLane) return `PM 확정: ${laneLabel(item.confirmedLane)}`;
       if (item.risk >= 5) return "주요 리스크가 높아 선제 대응 필요";
       if (item.urgency >= 5 && item.impact >= 4) return "긴급도와 사용자 영향이 모두 높음";
       if (item.value >= 5 && item.effort <= 3) return "비즈니스 가치 대비 공수가 적정";
@@ -1782,7 +1839,7 @@
     }
 
     function itemMatchesFilters(item) {
-      const lane = laneFor(item);
+      const lane = effectiveLane(item);
       const text = `${item.title} ${item.type} ${item.owner} ${item.note} ${sourceLabel(item)}`.toLowerCase();
       const matchesLane = activeFilter === "all" || activeFilter === lane;
       const matchesType = typeFilterValue === "all" || item.type === typeFilterValue;
@@ -1823,7 +1880,7 @@
     }
 
     function renderStats() {
-      const enriched = items.map(item => ({ ...item, score: scoreItem(item), lane: laneFor(item) }));
+      const enriched = items.map(item => ({ ...item, score: scoreItem(item), lane: effectiveLane(item) }));
       const nowCount = enriched.filter(item => item.lane === "now").length;
       const nextCount = enriched.filter(item => item.lane === "next").length;
       const highRisk = enriched.filter(item => item.risk >= 4).length;
@@ -1839,11 +1896,14 @@
       ].join("");
 
       avgScore.textContent = `Avg ${average}`;
+      modeHint.textContent = boardMode === "auto" ? "추천 레인 기준" : "PM 확정 기준";
     }
 
     function cardTemplate(item) {
       const score = scoreItem(item);
-      const lane = laneFor(item);
+      const lane = effectiveLane(item);
+      const autoLane = laneFor(item);
+      const confirmedText = item.confirmedLane ? `확정 ${laneLabel(item.confirmedLane)}` : "미확정";
 
       return `
         <article class="request-card ${lane} ${selectedId === item.id ? "active" : ""}" data-id="${item.id}">
@@ -1863,6 +1923,7 @@
               <span>${typeTone(item.type)}</span>
               <span>${item.owner}</span>
               <span>${sourceLabel(item)}</span>
+              <span class="confirmed">${boardMode === "confirmed" ? confirmedText : `추천 ${laneLabel(autoLane)}`}</span>
             </div>
             <p class="reason">${reasonLine(item)}</p>
             <p class="request-note">${item.note}</p>
@@ -1876,7 +1937,7 @@
       const grouped = { now: [], next: [], hold: [] };
 
       sorted.forEach(item => {
-        const lane = laneFor(item);
+        const lane = effectiveLane(item);
         grouped[lane].push(item);
       });
 
@@ -1912,20 +1973,34 @@
       renderAll();
     }
 
+    function applyDecisionToItem(item, action) {
+      if (action === "Now 확정") item.confirmedLane = "now";
+      if (action === "Next 확정") item.confirmedLane = "next";
+      if (action === "Hold 확정") item.confirmedLane = "hold";
+      if (action === "범위 축소") {
+        item.complexity = Math.max(1, item.complexity - 1);
+        item.effort = Math.max(1, item.effort - 1);
+        item.confirmedLane = effectiveLane(item);
+      }
+    }
+
     function addDecision(action) {
       const current = items.find(item => item.id === selectedId);
       if (!current) return;
 
+      applyDecisionToItem(current, action);
       decisions.unshift({
         id: Date.now(),
         title: current.title,
         action,
-        lane: laneFor(current),
+        lane: current.confirmedLane || effectiveLane(current),
         score: scoreItem(current),
         time: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
       });
 
-      renderDecisionLog();
+      boardMode = "confirmed";
+      updateModeTabs();
+      renderAll();
     }
 
     function renderDetail() {
@@ -1943,18 +2018,21 @@
 
       selectedId = current.id;
       const score = scoreItem(current);
-      const lane = laneFor(current);
+      const lane = effectiveLane(current);
+      const autoLane = laneFor(current);
       const notes = summarize(current);
 
       detailPanel.innerHTML = `
         <div>
           <span class="badge ${laneTone(lane)}">${laneLabel(lane)} · ${score}</span>
+          <span class="badge ${laneTone(autoLane)}">추천 ${laneLabel(autoLane)}</span>
+          <span class="badge ${current.confirmedLane ? laneTone(current.confirmedLane) : "amber"}">${current.confirmedLane ? `확정 ${laneLabel(current.confirmedLane)}` : "PM 미확정"}</span>
           <h3>${current.title}</h3>
           <p>${current.note}</p>
           <div class="decision-actions">
-            <button class="mini-btn red" type="button" data-decision="Now 유지">Now 유지</button>
-            <button class="mini-btn blue" type="button" data-decision="Next 이동">Next 이동</button>
-            <button class="mini-btn green" type="button" data-decision="Hold 보류">Hold 보류</button>
+            <button class="mini-btn red" type="button" data-decision="Now 확정">Now 확정</button>
+            <button class="mini-btn blue" type="button" data-decision="Next 확정">Next 확정</button>
+            <button class="mini-btn green" type="button" data-decision="Hold 확정">Hold 확정</button>
             <button class="mini-btn" type="button" data-decision="범위 축소">범위 축소</button>
           </div>
         </div>
@@ -1987,11 +2065,11 @@
       const visible = filteredItems();
       const grouped = { now: 0, next: 0, hold: 0 };
       visible.forEach(item => {
-        grouped[laneFor(item)] += 1;
+        grouped[effectiveLane(item)] += 1;
       });
 
       const topRisk = [...visible].sort((a, b) => b.risk - a.risk || scoreItem(b) - scoreItem(a))[0];
-      const topNow = visible.find(item => laneFor(item) === "now");
+      const topNow = visible.find(item => effectiveLane(item) === "now");
       const byType = visible.reduce((acc, item) => {
         acc[item.type] = (acc[item.type] || 0) + 1;
         return acc;
@@ -2015,7 +2093,7 @@
 
       summaryPanel.innerHTML = `
         <div class="summary-visual">
-          <span class="badge blue">Sprint 12 Brief</span>
+          <span class="badge blue">Sprint 12 Brief · ${boardMode === "auto" ? "자동 점수" : "PM 확정"}</span>
           <div class="lane-stack" aria-label="레인별 요청 분포">
             ${laneSegments.map(segment => `
               <div class="lane-segment ${segment.key}" style="width:${Math.max((segment.count / total) * 100, segment.count ? 10 : 0)}%">
@@ -2045,7 +2123,7 @@
           }
           teamMap[team].count += 1;
           teamMap[team].risk += item.risk >= 4 ? 1 : 0;
-          teamMap[team].now += laneFor(item) === "now" ? 1 : 0;
+          teamMap[team].now += effectiveLane(item) === "now" ? 1 : 0;
         });
       });
 
@@ -2107,7 +2185,9 @@
       items = [...newItems, ...items];
       selectedId = newItems[0]?.id ?? selectedId;
       activeFilter = "all";
+      boardMode = "auto";
       updateTabs();
+      updateModeTabs();
       updateSyncTime();
       renderAll();
     }
@@ -2171,11 +2251,13 @@
       items = cloneBaseItems();
       selectedId = items[0]?.id ?? null;
       activeFilter = "all";
+      boardMode = "auto";
       searchQuery = "";
       typeFilterValue = "all";
       riskOnly = false;
       decisions = [];
       updateTabs();
+      updateModeTabs();
       document.getElementById("searchInput").value = "";
       document.getElementById("typeFilter").value = "all";
       document.getElementById("riskOnly").checked = false;
@@ -2186,6 +2268,12 @@
     function updateTabs() {
       document.querySelectorAll(".tab").forEach(tab => {
         tab.classList.toggle("active", tab.dataset.filter === activeFilter);
+      });
+    }
+
+    function updateModeTabs() {
+      document.querySelectorAll(".mode-tab").forEach(tab => {
+        tab.classList.toggle("active", tab.dataset.mode === boardMode);
       });
     }
 
@@ -2208,6 +2296,14 @@
         updateTabs();
         renderBoard();
         renderSummary();
+      });
+    });
+
+    document.querySelectorAll(".mode-tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        boardMode = tab.dataset.mode;
+        updateModeTabs();
+        renderAll();
       });
     });
 
