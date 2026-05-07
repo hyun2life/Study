@@ -329,6 +329,102 @@
     .yellow-box { background: #fffbeb; border-color: #fde68a; color: #92400e; }
     .red-box { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
 
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #090f1d;
+        --surface: rgba(15, 23, 42, 0.88);
+        --surface-strong: #111827;
+        --text: #e5e7eb;
+        --muted: #94a3b8;
+        --line: rgba(148, 163, 184, 0.2);
+        --navy: #e5e7eb;
+        --blue: #60a5fa;
+        --blue-soft: rgba(37, 99, 235, 0.2);
+        --green: #4ade80;
+        --green-soft: rgba(22, 163, 74, 0.2);
+        --amber: #fbbf24;
+        --amber-soft: rgba(217, 119, 6, 0.2);
+        --red: #f87171;
+        --red-soft: rgba(220, 38, 38, 0.2);
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+        --shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.34);
+      }
+
+      body {
+        background:
+          radial-gradient(circle at top left, rgba(96, 165, 250, 0.16), transparent 28%),
+          radial-gradient(circle at top right, rgba(148, 163, 184, 0.1), transparent 24%),
+          var(--bg);
+      }
+
+      .card,
+      .stage-panel,
+      .subcard,
+      .summary-box,
+      .team-item,
+      .decision-box {
+        background: rgba(15, 23, 42, 0.76);
+        border-color: var(--line);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .eyebrow,
+      .stage-tabs button,
+      .kpi-icon,
+      .progress,
+      .list-item .icon {
+        background: rgba(30, 41, 59, 0.78);
+        border-color: var(--line);
+        color: #cbd5e1;
+      }
+
+      .stage-tabs button.active,
+      .badge {
+        background: linear-gradient(135deg, #e5e7eb, #94a3b8);
+        color: #0f172a;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+      }
+
+      .subtitle,
+      .stage-desc,
+      .kpi-sub,
+      .team-note,
+      .list-item,
+      .summary-title {
+        color: #cbd5e1;
+      }
+
+      .status.안정,
+      .green-box {
+        background: var(--green-soft);
+        border-color: rgba(74, 222, 128, 0.34);
+        color: var(--green);
+      }
+
+      .status.주의,
+      .yellow-box {
+        background: var(--amber-soft);
+        border-color: rgba(251, 191, 36, 0.34);
+        color: var(--amber);
+      }
+
+      .status.위험,
+      .red-box {
+        background: var(--red-soft);
+        border-color: rgba(248, 113, 113, 0.34);
+        color: var(--red);
+      }
+
+      .orange {
+        color: #fb923c;
+      }
+
+      .sky {
+        color: #38bdf8;
+      }
+    }
+
     @media (min-width: 768px) {
       .container { padding: 28px; gap: 22px; }
       .grid-kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); }

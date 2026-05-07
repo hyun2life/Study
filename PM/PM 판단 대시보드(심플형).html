@@ -829,6 +829,162 @@
       font-weight: 600;
     }
 
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #090f1d;
+        --bg2: #111827;
+        --surface: rgba(15, 23, 42, 0.88);
+        --surface-strong: #111827;
+        --text: #e5e7eb;
+        --muted: #94a3b8;
+        --line: rgba(148, 163, 184, 0.2);
+        --line-strong: rgba(148, 163, 184, 0.34);
+        --navy: #e5e7eb;
+        --slate: #cbd5e1;
+        --blue: #60a5fa;
+        --blue-soft: rgba(37, 99, 235, 0.2);
+        --purple: #a78bfa;
+        --purple-soft: rgba(124, 58, 237, 0.22);
+        --green: #4ade80;
+        --green-soft: rgba(22, 163, 74, 0.2);
+        --amber: #fbbf24;
+        --amber-soft: rgba(217, 119, 6, 0.2);
+        --red: #f87171;
+        --red-soft: rgba(220, 38, 38, 0.2);
+        --teal: #2dd4bf;
+        --teal-soft: rgba(15, 118, 110, 0.22);
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+        --shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.34);
+      }
+
+      body {
+        background:
+          radial-gradient(circle at top left, rgba(96, 165, 250, 0.16), transparent 28%),
+          radial-gradient(circle at top right, rgba(167, 139, 250, 0.12), transparent 24%),
+          linear-gradient(180deg, var(--bg2), var(--bg));
+      }
+
+      .surface,
+      .metric,
+      .tool-panel,
+      .detail-panel,
+      .request-card,
+      .detail-box,
+      .talk-card,
+      .integration-card,
+      .field-row,
+      .formula,
+      .empty {
+        background: rgba(15, 23, 42, 0.76);
+        border-color: var(--line);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .eyebrow,
+      .tab,
+      .btn-secondary,
+      .meta span,
+      .request-select {
+        background: rgba(30, 41, 59, 0.78);
+        border-color: var(--line);
+        color: var(--slate);
+      }
+
+      .tab.active {
+        background: linear-gradient(135deg, #e5e7eb, #94a3b8);
+        color: #0f172a;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+      }
+
+      .tab-now,
+      .badge.red {
+        background: var(--red-soft);
+        color: var(--red);
+        border-color: rgba(248, 113, 113, 0.34);
+      }
+
+      .tab-next,
+      .badge.blue {
+        background: var(--blue-soft);
+        color: var(--blue);
+        border-color: rgba(96, 165, 250, 0.34);
+      }
+
+      .tab-hold,
+      .badge.green {
+        background: var(--green-soft);
+        color: var(--green);
+        border-color: rgba(74, 222, 128, 0.34);
+      }
+
+      .badge.amber {
+        background: var(--amber-soft);
+        color: var(--amber);
+        border-color: rgba(251, 191, 36, 0.34);
+      }
+
+      .badge.purple {
+        background: var(--purple-soft);
+        color: var(--purple);
+        border-color: rgba(167, 139, 250, 0.34);
+      }
+
+      .badge.teal {
+        background: var(--teal-soft);
+        color: var(--teal);
+        border-color: rgba(45, 212, 191, 0.34);
+      }
+
+      .lane {
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      }
+
+      .lane-now {
+        background: rgba(127, 29, 29, 0.24);
+        border-color: rgba(248, 113, 113, 0.28);
+      }
+
+      .lane-next {
+        background: rgba(30, 64, 175, 0.2);
+        border-color: rgba(96, 165, 250, 0.28);
+      }
+
+      .lane-hold {
+        background: rgba(22, 101, 52, 0.22);
+        border-color: rgba(74, 222, 128, 0.28);
+      }
+
+      .field input,
+      .field select,
+      .field textarea {
+        background: rgba(2, 6, 23, 0.58);
+        border-color: var(--line-strong);
+        color: var(--text);
+      }
+
+      .field input:focus,
+      .field select:focus,
+      .field textarea:focus {
+        box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+      }
+
+      .hero p,
+      .section-head p,
+      .metric-desc,
+      .range-meta,
+      .range-meta span,
+      .board-toolbar .legend,
+      .request-note,
+      .detail-panel p,
+      .detail-box p,
+      .talk-card p,
+      .integration-card p,
+      .field-row span:last-child {
+        color: #cbd5e1;
+      }
+    }
+
     @media (min-width: 768px) {
       .container {
         padding: 28px 24px 48px;
