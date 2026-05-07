@@ -504,6 +504,35 @@
         box-shadow:0 10px 26px rgba(0,0,0,.28);
       }
 
+      .hub-node .box{
+        fill:rgba(15,23,42,.82);
+        stroke:rgba(148,163,184,.28);
+        filter:drop-shadow(0 8px 18px rgba(0,0,0,.28));
+      }
+
+      .hub-node .main{
+        fill:rgba(17,24,39,.94);
+        stroke:rgba(96,165,250,.42);
+        filter:drop-shadow(0 10px 24px rgba(0,0,0,.32));
+      }
+
+      .hub-node:hover .box,
+      .hub-node.active .box{
+        fill:rgba(30,41,59,.96);
+        stroke:rgba(96,165,250,.72);
+      }
+
+      .hub-node:hover .main,
+      .hub-node.active .main{
+        fill:rgba(15,23,42,.98);
+        stroke:rgba(96,165,250,.82);
+      }
+
+      .decision-card.active{
+        background:linear-gradient(180deg, rgba(30,41,59,.92), rgba(15,23,42,.9));
+        border-color:rgba(96,165,250,.52);
+      }
+
       .pill.blue{background:var(--blue-soft); color:var(--blue); border-color:rgba(96,165,250,.34)}
       .pill.purple{background:var(--purple-soft); color:var(--purple); border-color:rgba(167,139,250,.34)}
       .pill.green{background:var(--green-soft); color:var(--green); border-color:rgba(74,222,128,.34)}
@@ -514,6 +543,10 @@
       .hub-line,
       .timeline::before{
         background:var(--line);
+      }
+
+      .hub-line{
+        stroke:rgba(148,163,184,.28);
       }
 
       .hero p,
