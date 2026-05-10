@@ -1,0 +1,22 @@
+{
+  "spreadsheetId": "1YVeyjdoLetBq8yU67C5YTs6fpLyFKn1MUZhlxqB2WL8",
+  "tabs": {
+    "tcMaster": "TC_Master",
+    "testRun": "Test_Run",
+    "executionLog": "Execution_Log",
+    "defectLog": "Defect_Log",
+    "qaReport": "QA_Report"
+  },
+  "statusMap": {
+    "passed": "Pass",
+    "failed": "Fail",
+    "timedOut": "Fail",
+    "skipped": "Blocked",
+    "interrupted": "Blocked"
+  },
+  "defaultRun": {
+    "environment": "TBD",
+    "device": "Android TBD",
+    "tester": "QA"
+  }
+}

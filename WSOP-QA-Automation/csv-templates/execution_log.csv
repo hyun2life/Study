@@ -1,0 +1,5 @@
+Run ID,Run Date,Build/Version,Environment,Device,TC ID,TC Title,Result,Actual Result,Evidence Link,Defect ID,Tester,Notes
+RUN-2026-001,2026-05-10,TBD,TBD,Android TBD,TC-SMK-001,앱 실행 후 crash 없이 첫 화면 도달,Not Run,,,,QA,
+RUN-2026-001,2026-05-10,TBD,TBD,Android TBD,TC-SMK-002,QA 계정으로 로그인,Not Run,,,,QA,
+RUN-2026-001,2026-05-10,TBD,TBD,Android TBD,TC-SMK-010,책임 게임 페이지 접근,Not Run,,,,QA,
+RUN-2026-001,2026-05-10,TBD,TBD,Android TBD,TC-SMK-011,지갑/칩 페이지 접근,Not Run,,,,QA,

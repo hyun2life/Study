@@ -1,0 +1,11 @@
+{
+  "runId": "RUN-LOCAL-VERIFY",
+  "total": 2,
+  "pass": 1,
+  "fail": 1,
+  "blocked": 0,
+  "notRun": 0,
+  "passRate": 50.0,
+  "defectCandidates": 1,
+  "decision": "No-Go Review"
+}

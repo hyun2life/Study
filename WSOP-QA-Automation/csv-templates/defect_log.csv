@@ -1,0 +1,2 @@
+Run ID,Defect ID,TC ID,대분류,Severity,Priority,Title,Status,Owner,Found Date,Evidence Link,Expected,Actual,Notes
+SAMPLE,BUG-001,TC-SMK-XXX,TBD,Major,P1,Sample defect title,Open,TBD,2026-05-10,,Expected result,Actual result,"샘플 행, 실제 결함 등록 시 수정"
