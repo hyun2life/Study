@@ -30,6 +30,8 @@ class Issue(BaseModel):
     body: str = ""
     labels: list[str] = Field(default_factory=list)
     author: str
+    assignees: list[str] = Field(default_factory=list)
+    milestone: str | None = None
     url: HttpUrl
     state: IssueState = "open"
     created_at: datetime
@@ -44,4 +46,3 @@ class ClassifiedIssue(BaseModel):
     severity: Severity
     qa_notes: str
     recommended_action: str
-

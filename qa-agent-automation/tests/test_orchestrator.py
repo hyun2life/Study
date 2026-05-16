@@ -20,10 +20,10 @@ def test_orchestrator_generates_report_from_mock_issues(tmp_path) -> None:
 
     state = orchestrator.run()
 
-    assert len(state.issues) == 5
-    assert len(state.classified_issues) == 5
+    assert len(state.issues) == 8
+    assert len(state.classified_issues) == 8
     assert state.report is not None
-    assert state.report.summary.total_issues == 5
+    assert state.report.summary.total_issues == 8
     assert state.report.summary.by_severity["critical"] == 1
     assert state.report.summary.by_category["regression"] == 1
     assert state.report_path is not None
@@ -44,8 +44,10 @@ def test_orchestrator_renders_markdown(tmp_path) -> None:
     markdown = orchestrator.run_report_markdown()
 
     assert "# QA Daily Report" in markdown
-    assert "Repository: `acme/qa-demo`" in markdown
+    assert "| Repository | `acme/qa-demo` |" in markdown
     assert "## Priority Issues" in markdown
-    assert "**Critical** #31 Checkout crashes" in markdown
-    assert "## Issue Details" in markdown
-    assert "#31 Checkout crashes" in markdown
+    assert "| **Critical** | [#31 Checkout crashes" in markdown
+    assert "## Release Blocker Candidates" in markdown
+    assert "## QA Action Items" in markdown
+    assert "## Issue Matrix" in markdown
+    assert "## Detailed Notes" in markdown

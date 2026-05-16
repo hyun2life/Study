@@ -29,6 +29,8 @@ qa-agent-automation/
 │     └─ run_store.py
 ├─ reports/
 │  └─ YYYY-MM-DD.md
+├─ docs/
+│  └─ sample-report.md
 ├─ tests/
 │  └─ test_orchestrator.py
 ├─ .env.example
@@ -61,6 +63,7 @@ python app/main.py
 ```
 
 기본 설정에서는 같은 리포트가 `reports/YYYY-MM-DD.md` 파일로도 저장됩니다.
+GitHub에서 바로 볼 수 있는 샘플은 `docs/sample-report.md`에 포함되어 있습니다.
 
 또는 모듈 방식으로 실행할 수도 있습니다.
 
