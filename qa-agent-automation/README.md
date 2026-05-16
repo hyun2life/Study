@@ -31,6 +31,7 @@ qa-agent-automation/
 │  └─ YYYY-MM-DD.md
 ├─ docs/
 │  ├─ sample-report.html
+│  ├─ sample-report-ko.html
 │  └─ sample-report.md
 ├─ tests/
 │  └─ test_orchestrator.py
@@ -63,9 +64,9 @@ source .venv/bin/activate
 python app/main.py
 ```
 
-기본 설정에서는 같은 리포트가 `reports/YYYY-MM-DD.md`와 `reports/YYYY-MM-DD.html` 파일로도 저장됩니다.
-HTML 리포트는 이메일 본문에 넣기 쉬운 인라인 스타일 기반입니다.
-GitHub에서 바로 볼 수 있는 샘플은 `docs/sample-report.md`와 `docs/sample-report.html`에 포함되어 있습니다.
+기본 설정에서는 같은 리포트가 `reports/YYYY-MM-DD.md`, `reports/YYYY-MM-DD.html`, `reports/YYYY-MM-DD.ko.html` 파일로도 저장됩니다.
+HTML 리포트는 이메일 본문에 넣기 쉬운 인라인 스타일 기반이며, 영어/한국어 버전을 함께 생성합니다.
+GitHub에서 바로 볼 수 있는 샘플은 `docs/sample-report.md`, `docs/sample-report.html`, `docs/sample-report-ko.html`에 포함되어 있습니다.
 
 또는 모듈 방식으로 실행할 수도 있습니다.
 
@@ -94,4 +95,5 @@ REPORT_TIMEZONE=Asia/Seoul
 REPORT_OUTPUT_DIR=reports
 SAVE_REPORT_TO_FILE=true
 SAVE_HTML_REPORT_TO_FILE=true
+SAVE_KOREAN_HTML_REPORT_TO_FILE=true
 ```

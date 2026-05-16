@@ -276,6 +276,117 @@ class QaReport(BaseModel):
         )
         return "".join(html)
 
+    def to_korean_html(self) -> str:
+        """Render this report as Korean email-friendly HTML."""
+        total = self.summary.total_issues
+        critical = self.summary.by_severity.get("critical", 0)
+        high = self.summary.by_severity.get("high", 0)
+        new_today = self._issues_created_today()
+        updated_today = self._issues_updated_today()
+        release_blockers = self._release_blockers()
+        priority_issues = self._priority_issues()
+        title = "QA 데일리 리포트"
+
+        html = [
+            "<!doctype html>",
+            '<html lang="ko">',
+            "<head>",
+            '<meta charset="utf-8">',
+            '<meta name="viewport" content="width=device-width, initial-scale=1">',
+            f"<title>{self._html_escape(title)}</title>",
+            "</head>",
+            '<body style="margin:0;background:#f3f6fb;color:#111827;'
+            "font-family:Arial,Helvetica,sans-serif;\">",
+            '<div style="display:none;max-height:0;overflow:hidden;color:#f3f6fb;">'
+            f"{self._html_escape(title)} - 총 {total}건, Critical {critical}건, "
+            f"High {high}건"
+            "</div>",
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
+            'style="background:#f3f6fb;border-collapse:collapse;">',
+            "<tr><td align=\"center\" style=\"padding:24px 12px;\">",
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
+            'style="max-width:960px;background:#ffffff;border-collapse:collapse;'
+            "border:1px solid #d9e2f1;\">",
+            '<tr><td style="background:#172033;color:#ffffff;padding:28px 32px;">',
+            f'<div style="font-size:26px;font-weight:700;line-height:1.25;">'
+            f"{self._html_escape(title)}</div>",
+            '<div style="font-size:13px;color:#cbd5e1;margin-top:8px;">'
+            f"저장소: <strong>{self._html_escape(self.repository)}</strong> "
+            f"&nbsp;|&nbsp; 생성 시간: "
+            f"{self._html_escape(self.generated_at.isoformat())}"
+            "</div>",
+            "</td></tr>",
+            '<tr><td style="padding:24px 32px;">',
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
+            'style="border-collapse:collapse;">',
+            "<tr>",
+            self._html_metric_card("전체 이슈", str(total), "#2563eb"),
+            self._html_metric_card("Critical / High", f"{critical} / {high}", "#dc2626"),
+            self._html_metric_card("릴리즈 블로커 후보", str(len(release_blockers)), "#b42318"),
+            "</tr><tr>",
+            self._html_metric_card("오늘 생성", str(len(new_today)), "#059669"),
+            self._html_metric_card("오늘 업데이트", str(len(updated_today)), "#7c3aed"),
+            self._html_metric_card(
+                "테스트 갭",
+                str(self.summary.by_category.get("test_gap", 0)),
+                "#ea580c",
+            ),
+            "</tr>",
+            "</table>",
+            "</td></tr>",
+        ]
+
+        html.append(
+            self._html_section(
+                "우선 확인 이슈",
+                self._html_priority_table_ko(priority_issues)
+                if priority_issues
+                else self._html_empty("Critical 또는 High 이슈가 없습니다."),
+            )
+        )
+        html.append(
+            self._html_section(
+                "릴리즈 블로커 후보",
+                self._html_release_blockers_ko(release_blockers),
+            )
+        )
+        html.append(self._html_section("QA 액션 아이템", self._html_action_items_ko()))
+        html.append(
+            self._html_section(
+                "오늘의 변동",
+                self._html_table(
+                    ["구분", "건수", "이슈"],
+                    [
+                        ["오늘 생성", str(len(new_today)), self._html_issue_links_ko(new_today)],
+                        [
+                            "오늘 업데이트",
+                            str(len(updated_today)),
+                            self._html_issue_links_ko(updated_today),
+                        ],
+                    ],
+                ),
+            )
+        )
+        html.append(self._html_section("요약", self._html_summary_tables_ko()))
+        html.append(self._html_section("리뷰어 노트", self._html_reviewer_notes_ko()))
+        html.append(self._html_section("이슈 매트릭스", self._html_issue_matrix_ko()))
+        html.append(self._html_section("상세 노트", self._html_detail_cards_ko()))
+
+        html.extend(
+            [
+                '<tr><td style="padding:18px 32px 28px;color:#64748b;'
+                'font-size:12px;border-top:1px solid #e5e7eb;">',
+                "이 리포트는 mock QA 이슈 데이터를 기반으로 생성되었습니다. "
+                "현재 빌드에서는 실제 GitHub, OpenAI, 메신저 연동을 사용하지 않습니다.",
+                "</td></tr>",
+                "</table>",
+                "</td></tr>",
+                "</table>",
+                "</body></html>",
+            ]
+        )
+        return "".join(html)
+
     def _priority_issues(self) -> list[ClassifiedIssue]:
         """Return high-priority issues sorted by severity."""
         order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -329,6 +440,26 @@ class QaReport(BaseModel):
             rows,
         )
 
+    def _html_priority_table_ko(self, issues: list[ClassifiedIssue]) -> str:
+        """Render priority issues as a Korean HTML table."""
+        rows = []
+        for item in issues:
+            issue = item.issue
+            rows.append(
+                [
+                    self._html_severity_badge_ko(item.severity),
+                    self._html_issue_link_ko(item),
+                    self._html_category_badge_ko(item.category),
+                    self._html_escape(self._owners(item)),
+                    self._html_escape(self._format_datetime(issue.updated_at)),
+                    self._html_escape(self._ko_recommended_action(item)),
+                ]
+            )
+        return self._html_table(
+            ["심각도", "이슈", "분류", "담당자", "업데이트", "권장 조치"],
+            rows,
+        )
+
     def _html_release_blockers(self, issues: list[ClassifiedIssue]) -> str:
         """Render release blocker candidates."""
         if not issues:
@@ -344,6 +475,22 @@ class QaReport(BaseModel):
                 ]
             )
         return self._html_table(["Issue", "QA note", "Next action"], rows)
+
+    def _html_release_blockers_ko(self, issues: list[ClassifiedIssue]) -> str:
+        """Render Korean release blocker candidates."""
+        if not issues:
+            return self._html_empty("이번 리포트에는 릴리즈 블로커 후보가 없습니다.")
+
+        rows = []
+        for item in issues:
+            rows.append(
+                [
+                    self._html_issue_link_ko(item),
+                    self._html_escape(self._ko_qa_note(item)),
+                    self._html_escape(self._ko_recommended_action(item)),
+                ]
+            )
+        return self._html_table(["이슈", "QA 메모", "다음 조치"], rows)
 
     def _html_action_items(self) -> str:
         """Render action items as HTML bullets."""
@@ -376,6 +523,38 @@ class QaReport(BaseModel):
             + "</ul>"
         )
 
+    def _html_action_items_ko(self) -> str:
+        """Render Korean action items as HTML bullets."""
+        items = []
+        for item in self._priority_issues():
+            items.append(
+                f"{self._html_issue_link_ko(item)}: "
+                f"{self._html_escape(self._ko_recommended_action(item))}"
+            )
+
+        coverage_gaps = [item for item in self.issues if item.category == "test_gap"]
+        if coverage_gaps:
+            items.append(
+                f"{self._html_issue_links_ko(coverage_gaps)} 관련 작업을 닫기 전에 "
+                "자동화 또는 수동 테스트 커버리지를 보강하세요."
+            )
+
+        flaky_tests = [item for item in self.issues if item.category == "flaky_test"]
+        if flaky_tests:
+            items.append(
+                f"{self._html_issue_links_ko(flaky_tests)}의 불안정 테스트 담당자와 "
+                "안정화 계획을 확인하세요."
+            )
+
+        if not items:
+            items = ["즉시 처리해야 할 QA 액션 아이템이 없습니다."]
+
+        return (
+            '<ul style="margin:0;padding:0 0 0 20px;color:#334155;line-height:1.55;">'
+            + "".join(f'<li style="margin:0 0 8px;">{item}</li>' for item in items)
+            + "</ul>"
+        )
+
     def _html_summary_tables(self) -> str:
         """Render severity and category summary tables."""
         severity_rows = [
@@ -399,6 +578,29 @@ class QaReport(BaseModel):
             "</tr></table>"
         )
 
+    def _html_summary_tables_ko(self) -> str:
+        """Render Korean severity and category summary tables."""
+        severity_rows = [
+            [
+                self._html_severity_badge_ko(severity),
+                str(self.summary.by_severity.get(severity, 0)),
+            ]
+            for severity in ("critical", "high", "medium", "low")
+        ]
+        category_rows = [
+            [self._html_category_badge_ko(category), str(count)]
+            for category, count in sorted(self.summary.by_category.items())
+        ]
+        return (
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
+            'style="border-collapse:collapse;"><tr>'
+            f'<td width="50%" valign="top" style="padding-right:8px;">'
+            f'{self._html_table(["심각도", "건수"], severity_rows)}</td>'
+            f'<td width="50%" valign="top" style="padding-left:8px;">'
+            f'{self._html_table(["분류", "건수"], category_rows)}</td>'
+            "</tr></table>"
+        )
+
     def _html_reviewer_notes(self) -> str:
         """Render reviewer findings."""
         if not self.findings:
@@ -409,6 +611,19 @@ class QaReport(BaseModel):
             f'<strong style="color:#172033;">{self._html_escape(finding.title)}</strong>'
             f'<div style="margin-top:4px;color:#334155;line-height:1.5;">'
             f"{self._html_escape(finding.detail)}</div></div>"
+            for finding in self.findings
+        )
+
+    def _html_reviewer_notes_ko(self) -> str:
+        """Render Korean reviewer findings."""
+        if not self.findings:
+            return self._html_empty("추가 리뷰어 노트가 없습니다.")
+        return "".join(
+            '<div style="margin:0 0 10px;padding:12px 14px;background:#f8fafc;'
+            'border:1px solid #e2e8f0;">'
+            f'<strong style="color:#172033;">{self._html_escape(self._ko_finding_title(finding.title))}</strong>'
+            f'<div style="margin-top:4px;color:#334155;line-height:1.5;">'
+            f"{self._html_escape(self._ko_finding_detail(finding.detail))}</div></div>"
             for finding in self.findings
         )
 
@@ -432,6 +647,26 @@ class QaReport(BaseModel):
             rows,
         )
 
+    def _html_issue_matrix_ko(self) -> str:
+        """Render the full issue matrix in Korean."""
+        rows = []
+        for item in self.issues:
+            issue = item.issue
+            rows.append(
+                [
+                    self._html_severity_badge_ko(item.severity),
+                    self._html_issue_link_ko(item),
+                    self._html_category_badge_ko(item.category),
+                    self._html_labels(item),
+                    self._html_escape(self._owners(item)),
+                    self._html_escape(issue.milestone or "-"),
+                ]
+            )
+        return self._html_table(
+            ["심각도", "이슈", "분류", "라벨", "담당자", "마일스톤"],
+            rows,
+        )
+
     def _html_detail_cards(self) -> str:
         """Render detailed issue notes as email-safe cards."""
         cards = []
@@ -452,6 +687,30 @@ class QaReport(BaseModel):
                 f'<div>URL: {self._html_issue_link(item)}</div>'
                 f"<div>QA Notes: {self._html_escape(item.qa_notes)}</div>"
                 f"<div>Recommended Action: {self._html_escape(item.recommended_action)}</div>"
+                "</div></div>"
+            )
+        return "".join(cards)
+
+    def _html_detail_cards_ko(self) -> str:
+        """Render detailed issue notes as Korean email-safe cards."""
+        cards = []
+        for item in self.issues:
+            issue = item.issue
+            cards.append(
+                '<div style="margin:0 0 12px;border:1px solid #e2e8f0;'
+                'background:#ffffff;">'
+                '<div style="padding:12px 14px;background:#f8fafc;'
+                'border-bottom:1px solid #e2e8f0;font-weight:700;color:#172033;">'
+                f"#{issue.number} {self._html_escape(self._ko_issue_title(item))}</div>"
+                '<div style="padding:14px;color:#334155;line-height:1.55;">'
+                f"<div>심각도: {self._html_severity_badge_ko(item.severity)}</div>"
+                f"<div>분류: {self._html_category_badge_ko(item.category)}</div>"
+                f"<div>라벨: {self._html_labels(item)}</div>"
+                f"<div>담당자: {self._html_escape(self._owners(item))}</div>"
+                f"<div>마일스톤: {self._html_escape(issue.milestone or '-')}</div>"
+                f'<div>URL: {self._html_issue_link_ko(item)}</div>'
+                f"<div>QA 메모: {self._html_escape(self._ko_qa_note(item))}</div>"
+                f"<div>권장 조치: {self._html_escape(self._ko_recommended_action(item))}</div>"
                 "</div></div>"
             )
         return "".join(cards)
@@ -492,6 +751,12 @@ class QaReport(BaseModel):
             return "-"
         return ", ".join(self._html_issue_link(item) for item in items)
 
+    def _html_issue_links_ko(self, items: list[ClassifiedIssue]) -> str:
+        """Render compact Korean HTML issue links."""
+        if not items:
+            return "-"
+        return ", ".join(self._html_issue_link_ko(item) for item in items)
+
     def _html_issue_link(self, item: ClassifiedIssue) -> str:
         """Render an issue as an HTML link."""
         issue = item.issue
@@ -499,6 +764,15 @@ class QaReport(BaseModel):
             f'<a href="{self._html_escape(str(issue.url))}" '
             'style="color:#2563eb;text-decoration:none;">'
             f"#{issue.number} {self._html_escape(issue.title)}</a>"
+        )
+
+    def _html_issue_link_ko(self, item: ClassifiedIssue) -> str:
+        """Render an issue as a Korean HTML link."""
+        issue = item.issue
+        return (
+            f'<a href="{self._html_escape(str(issue.url))}" '
+            'style="color:#2563eb;text-decoration:none;">'
+            f"#{issue.number} {self._html_escape(self._ko_issue_title(item))}</a>"
         )
 
     def _html_labels(self, item: ClassifiedIssue) -> str:
@@ -527,6 +801,21 @@ class QaReport(BaseModel):
             f'font-size:12px;">{self._html_escape(severity.title())}</span>'
         )
 
+    def _html_severity_badge_ko(self, severity: Severity) -> str:
+        """Render a colored Korean severity badge."""
+        colors = {
+            "critical": ("#fee2e2", "#b42318"),
+            "high": ("#ffedd5", "#c2410c"),
+            "medium": ("#dbeafe", "#1d4ed8"),
+            "low": ("#dcfce7", "#15803d"),
+        }
+        background, color = colors[severity]
+        return (
+            '<span style="display:inline-block;padding:4px 8px;'
+            f'background:{background};color:{color};font-weight:700;'
+            f'font-size:12px;">{self._html_escape(self._ko_severity(severity))}</span>'
+        )
+
     def _html_category_badge(self, category: QaCategory) -> str:
         """Render a category badge."""
         return (
@@ -534,9 +823,96 @@ class QaReport(BaseModel):
             f'color:#3730a3;font-size:12px;">{self._html_escape(category)}</span>'
         )
 
+    def _html_category_badge_ko(self, category: QaCategory) -> str:
+        """Render a Korean category badge."""
+        return (
+            '<span style="display:inline-block;padding:4px 8px;background:#eef2ff;'
+            f'color:#3730a3;font-size:12px;">{self._html_escape(self._ko_category(category))}</span>'
+        )
+
     def _html_escape(self, value: object) -> str:
         """Escape text for HTML output."""
         return escape(str(value), quote=True)
+
+    def _ko_issue_title(self, item: ClassifiedIssue) -> str:
+        """Return a Korean mock title when available."""
+        titles = {
+            31: "만료된 쿠폰 적용 시 결제 화면 크래시",
+            32: "회귀: 로그인 리다이렉트가 원래 URL을 잃어버림",
+            33: "비밀번호 재설정 토큰 만료 테스트 추가",
+            34: "CI에서 검색 결과 정렬 테스트가 간헐적으로 실패",
+            35: "릴리즈 체크리스트 문서 업데이트",
+            36: "모바일 결제 모달이 작은 화면에서 잘림",
+            37: "구독 업그레이드 플로우 탐색 테스트 체크리스트 추가",
+            38: "검색 실패 빈 상태 문구 개선",
+        }
+        return titles.get(item.issue.number, item.issue.title)
+
+    def _ko_severity(self, severity: Severity) -> str:
+        """Translate severity labels to Korean."""
+        return {
+            "critical": "긴급",
+            "high": "높음",
+            "medium": "보통",
+            "low": "낮음",
+        }[severity]
+
+    def _ko_category(self, category: QaCategory) -> str:
+        """Translate QA category labels to Korean."""
+        return {
+            "bug": "버그",
+            "regression": "회귀",
+            "test_gap": "테스트 갭",
+            "flaky_test": "불안정 테스트",
+            "documentation": "문서",
+            "enhancement": "개선",
+            "unknown": "미분류",
+        }[category]
+
+    def _ko_qa_note(self, item: ClassifiedIssue) -> str:
+        """Return a Korean QA note."""
+        if item.severity == "critical":
+            return "릴리즈 차단 가능성이 있습니다. 재현 절차와 영향 범위를 먼저 확인하세요."
+        if item.category == "regression":
+            return "회귀 위험이 감지되었습니다. 마지막 정상 빌드와 동작을 비교하세요."
+        if item.category == "test_gap":
+            return "테스트 커버리지 공백이 있습니다. 누락된 경로에 자동화 또는 수동 검증을 추가하세요."
+        if item.category == "flaky_test":
+            return "테스트 안정성 위험이 있습니다. 타이밍, 순서, 환경 의존성을 분리해 확인하세요."
+        return "QA 트리아지 큐에서 추적하고 다음 검증 패스에서 확인하세요."
+
+    def _ko_recommended_action(self, item: ClassifiedIssue) -> str:
+        """Return a Korean recommended action."""
+        if item.severity == "critical":
+            return "담당자에게 즉시 에스컬레이션하고, 재현 확인 후 필요하면 릴리즈를 보류하세요."
+        if item.category == "regression":
+            return "수정 검증을 우선 처리하고 회귀 테스트 커버리지를 추가하세요."
+        if item.category == "test_gap":
+            return "관련 기능 또는 버그를 닫기 전에 테스트 케이스를 작성하세요."
+        if item.category == "flaky_test":
+            return "필요 시 임시 격리하고, 근본 원인을 안정화하세요."
+        if item.category == "documentation":
+            return "QA 체크리스트를 업데이트하고 이해관계자와 변경된 절차를 확인하세요."
+        return "데일리 QA 트리아지에서 검토하세요."
+
+    def _ko_finding_title(self, title: str) -> str:
+        """Translate reviewer finding titles to Korean."""
+        return {
+            "Critical attention needed": "긴급 확인 필요",
+            "Regression watch": "회귀 위험 모니터링",
+            "Coverage follow-up": "커버리지 보강 필요",
+            "No urgent QA risk": "긴급 QA 위험 없음",
+        }.get(title, title)
+
+    def _ko_finding_detail(self, detail: str) -> str:
+        """Translate known reviewer finding details to Korean."""
+        if "critical issue" in detail:
+            return "릴리즈 판단 전에 Critical 이슈를 우선 검토해야 합니다."
+        if "regression issue" in detail:
+            return "회귀 이슈는 이전 안정 동작과 비교 검증이 필요합니다."
+        if "missing QA automation" in detail:
+            return "테스트 자동화 또는 수동 검증 커버리지 공백을 보강해야 합니다."
+        return detail
 
     def _release_blockers(self) -> list[ClassifiedIssue]:
         """Return issues that may block a release."""

@@ -22,6 +22,7 @@ class AutomationState(BaseModel):
     report: QaReport | None = None
     report_path: str | None = None
     html_report_path: str | None = None
+    korean_html_report_path: str | None = None
     messages: list[str] = Field(default_factory=list)
 
     def mark_finished(self) -> None:

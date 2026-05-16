@@ -28,3 +28,11 @@ class ReportStore:
         report_path = self.output_dir / f"{report_date}.html"
         report_path.write_text(html, encoding="utf-8")
         return report_path
+
+    def save_korean_html(self, report: QaReport, html: str) -> Path:
+        """Save a Korean report as reports/YYYY-MM-DD.ko.html and return the path."""
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        report_date = report.generated_at.date().isoformat()
+        report_path = self.output_dir / f"{report_date}.ko.html"
+        report_path.write_text(html, encoding="utf-8")
+        return report_path
