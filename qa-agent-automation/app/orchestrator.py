@@ -69,7 +69,7 @@ class QaReportOrchestrator:
         findings = self.reviewer.review(state.classified_issues)
 
         repository = f"{self.settings.github_owner}/{self.settings.github_repo}"
-        state.messages.append("Generating Markdown QA report.")
+        state.messages.append("Generating QA report.")
         state.report = self.reporter.build_report(
             title=self.settings.report_title,
             repository=repository,
@@ -82,6 +82,12 @@ class QaReportOrchestrator:
             report_path = self.report_store.save_markdown(state.report, markdown)
             state.report_path = str(report_path)
             state.messages.append(f"Saved Markdown report to {report_path}.")
+
+        if self.settings.save_html_report_to_file:
+            html = state.report.to_html()
+            html_path = self.report_store.save_html(state.report, html)
+            state.html_report_path = str(html_path)
+            state.messages.append(f"Saved HTML report to {html_path}.")
 
         sent = self.messenger.send(markdown)
         state.messages.append(f"Messenger delivery enabled: {sent}.")

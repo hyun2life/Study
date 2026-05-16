@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QA Daily Report</title>
+</head>
+<body style="margin:0;background:#f3f6fb;color:#111827;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;border-collapse:collapse;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:960px;background:#ffffff;border-collapse:collapse;border:1px solid #d9e2f1;">
+          <tr>
+            <td style="background:#172033;color:#ffffff;padding:28px 32px;">
+              <div style="font-size:26px;font-weight:700;line-height:1.25;">QA Daily Report</div>
+              <div style="font-size:13px;color:#cbd5e1;margin-top:8px;">Repository: <strong>example-org/example-repo</strong> | Generated: 2026-05-17T09:00:00+09:00</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 32px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                <tr>
+                  <td width="33.33%" style="padding:6px;"><div style="padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #2563eb;"><div style="font-size:12px;color:#64748b;text-transform:uppercase;">Total Issues</div><div style="font-size:24px;font-weight:700;margin-top:6px;">8</div></div></td>
+                  <td width="33.33%" style="padding:6px;"><div style="padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #dc2626;"><div style="font-size:12px;color:#64748b;text-transform:uppercase;">Critical / High</div><div style="font-size:24px;font-weight:700;margin-top:6px;">1 / 1</div></div></td>
+                  <td width="33.33%" style="padding:6px;"><div style="padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #b42318;"><div style="font-size:12px;color:#64748b;text-transform:uppercase;">Release Blockers</div><div style="font-size:24px;font-weight:700;margin-top:6px;">1</div></div></td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:6px 32px 22px;">
+              <h2 style="margin:0 0 12px;font-size:18px;color:#172033;">Priority Issues</h2>
+              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#ffffff;">
+                <tr>
+                  <th align="left" style="padding:10px 12px;background:#edf2f7;border:1px solid #dbe4f0;color:#334155;font-size:12px;">Severity</th>
+                  <th align="left" style="padding:10px 12px;background:#edf2f7;border:1px solid #dbe4f0;color:#334155;font-size:12px;">Issue</th>
+                  <th align="left" style="padding:10px 12px;background:#edf2f7;border:1px solid #dbe4f0;color:#334155;font-size:12px;">Owner</th>
+                  <th align="left" style="padding:10px 12px;background:#edf2f7;border:1px solid #dbe4f0;color:#334155;font-size:12px;">Recommended action</th>
+                </tr>
+                <tr>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;"><span style="display:inline-block;padding:4px 8px;background:#fee2e2;color:#b42318;font-weight:700;font-size:12px;">Critical</span></td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;"><a href="https://github.com/example-org/example-repo/issues/31" style="color:#2563eb;text-decoration:none;">#31 Checkout crashes when applying expired coupon</a></td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">dev-lee</td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">Escalate to owner and confirm release impact.</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;"><span style="display:inline-block;padding:4px 8px;background:#ffedd5;color:#c2410c;font-weight:700;font-size:12px;">High</span></td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;"><a href="https://github.com/example-org/example-repo/issues/32" style="color:#2563eb;text-decoration:none;">#32 Regression: login redirect loses return URL</a></td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">dev-kang</td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">Prioritize fix verification and add regression coverage.</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:6px 32px 22px;">
+              <h2 style="margin:0 0 12px;font-size:18px;color:#172033;">QA Action Items</h2>
+              <ul style="margin:0;padding:0 0 0 20px;color:#334155;line-height:1.55;">
+                <li style="margin:0 0 8px;">Escalate checkout crash and verify whether release should be blocked.</li>
+                <li style="margin:0 0 8px;">Add coverage for password reset and subscription upgrade paths.</li>
+                <li style="margin:0 0 8px;">Review flaky CI ownership and stabilization plan.</li>
+              </ul>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:6px 32px 28px;">
+              <h2 style="margin:0 0 12px;font-size:18px;color:#172033;">Issue Matrix</h2>
+              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#ffffff;">
+                <tr>
+                  <th align="left" style="padding:10px 12px;background:#edf2f7;border:1px solid #dbe4f0;color:#334155;font-size:12px;">Severity</th>
+                  <th align="left" style="padding:10px 12px;background:#edf2f7;border:1px solid #dbe4f0;color:#334155;font-size:12px;">Issue</th>
+                  <th align="left" style="padding:10px 12px;background:#edf2f7;border:1px solid #dbe4f0;color:#334155;font-size:12px;">Category</th>
+                  <th align="left" style="padding:10px 12px;background:#edf2f7;border:1px solid #dbe4f0;color:#334155;font-size:12px;">Milestone</th>
+                </tr>
+                <tr>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">Critical</td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">Checkout crashes when applying expired coupon</td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">bug</td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">May Release</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">Medium</td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">Search result ordering test is flaky in CI</td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">flaky_test</td>
+                  <td style="padding:10px 12px;border:1px solid #e2e8f0;">Test Hardening</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

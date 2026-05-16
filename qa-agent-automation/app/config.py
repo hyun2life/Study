@@ -16,6 +16,7 @@ class Settings(BaseModel):
     report_timezone: str = Field(default="Asia/Seoul")
     report_output_dir: str = Field(default="reports")
     save_report_to_file: bool = Field(default=True)
+    save_html_report_to_file: bool = Field(default=True)
     messenger_enabled: bool = Field(default=False)
 
     @classmethod
@@ -29,5 +30,7 @@ class Settings(BaseModel):
             report_timezone=os.getenv("REPORT_TIMEZONE", "Asia/Seoul"),
             report_output_dir=os.getenv("REPORT_OUTPUT_DIR", "reports"),
             save_report_to_file=os.getenv("SAVE_REPORT_TO_FILE", "true").lower() == "true",
+            save_html_report_to_file=os.getenv("SAVE_HTML_REPORT_TO_FILE", "true").lower()
+            == "true",
             messenger_enabled=os.getenv("MESSENGER_ENABLED", "false").lower() == "true",
         )
