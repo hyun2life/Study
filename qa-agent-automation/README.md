@@ -25,7 +25,10 @@ qa-agent-automation/
 │  │  ├─ report.py
 │  │  └─ state.py
 │  └─ storage/
+│     ├─ report_store.py
 │     └─ run_store.py
+├─ reports/
+│  └─ YYYY-MM-DD.md
 ├─ tests/
 │  └─ test_orchestrator.py
 ├─ .env.example
@@ -57,6 +60,8 @@ source .venv/bin/activate
 python app/main.py
 ```
 
+기본 설정에서는 같은 리포트가 `reports/YYYY-MM-DD.md` 파일로도 저장됩니다.
+
 또는 모듈 방식으로 실행할 수도 있습니다.
 
 ```bash
@@ -74,5 +79,13 @@ pytest
 - `app/tools/github_client.py`: 실제 GitHub API 연동 위치
 - `app/tools/messenger.py`: Discord 또는 Slack 전송 연동 위치
 - `app/agents/classifier_agent.py`: QA 분류 규칙 또는 향후 LLM 기반 분류 로직 위치
+- `app/storage/report_store.py`: Markdown 리포트 파일 저장 위치
 - `app/storage/run_store.py`: 파일, DB, S3 등 영속 저장소로 교체할 위치
 
+## 환경 변수
+
+```bash
+REPORT_TIMEZONE=Asia/Seoul
+REPORT_OUTPUT_DIR=reports
+SAVE_REPORT_TO_FILE=true
+```

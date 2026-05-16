@@ -43,9 +43,30 @@ class QaReport(BaseModel):
             f"- Generated at: `{self.generated_at.isoformat()}`",
             f"- Total issues: **{self.summary.total_issues}**",
             "",
-            "## Summary by Severity",
+            "## Priority Issues",
             "",
         ]
+
+        priority_issues = [
+            item for item in self.issues if item.severity in {"critical", "high"}
+        ]
+        if priority_issues:
+            for item in priority_issues:
+                issue = item.issue
+                lines.append(
+                    f"- **{item.severity.title()}** #{issue.number} {issue.title} "
+                    f"({item.category})"
+                )
+        else:
+            lines.append("- No critical or high severity issues.")
+
+        lines.extend(
+            [
+                "",
+                "## Summary by Severity",
+                "",
+            ]
+        )
 
         for severity in ("critical", "high", "medium", "low"):
             count = self.summary.by_severity.get(severity, 0)
@@ -81,4 +102,3 @@ class QaReport(BaseModel):
             )
 
         return "\n".join(lines).strip() + "\n"
-

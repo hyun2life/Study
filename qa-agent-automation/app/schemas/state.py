@@ -20,9 +20,9 @@ class AutomationState(BaseModel):
     issues: list[Issue] = Field(default_factory=list)
     classified_issues: list[ClassifiedIssue] = Field(default_factory=list)
     report: QaReport | None = None
+    report_path: str | None = None
     messages: list[str] = Field(default_factory=list)
 
     def mark_finished(self) -> None:
         """Mark this workflow run as finished."""
         self.finished_at = datetime.now(timezone.utc)
-

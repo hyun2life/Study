@@ -8,6 +8,7 @@ from app.agents.reporter_agent import ReporterAgent
 from app.agents.reviewer_agent import ReviewerAgent
 from app.config import Settings
 from app.schemas.state import AutomationState
+from app.storage.report_store import ReportStore
 from app.storage.run_store import RunStore
 from app.tools.github_client import GitHubClient
 from app.tools.messenger import Messenger
@@ -25,6 +26,7 @@ class QaReportOrchestrator:
         reporter: ReporterAgent,
         messenger: Messenger,
         run_store: RunStore,
+        report_store: ReportStore,
     ) -> None:
         self.settings = settings
         self.collector = collector
@@ -33,6 +35,7 @@ class QaReportOrchestrator:
         self.reporter = reporter
         self.messenger = messenger
         self.run_store = run_store
+        self.report_store = report_store
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "QaReportOrchestrator":
@@ -47,9 +50,10 @@ class QaReportOrchestrator:
             collector=CollectorAgent(github_client),
             classifier=ClassifierAgent(),
             reviewer=ReviewerAgent(),
-            reporter=ReporterAgent(),
+            reporter=ReporterAgent(timezone_name=settings.report_timezone),
             messenger=Messenger(enabled=settings.messenger_enabled),
             run_store=RunStore(),
+            report_store=ReportStore(settings.report_output_dir),
         )
 
     def run(self) -> AutomationState:
@@ -74,6 +78,11 @@ class QaReportOrchestrator:
         )
 
         markdown = state.report.to_markdown()
+        if self.settings.save_report_to_file:
+            report_path = self.report_store.save_markdown(state.report, markdown)
+            state.report_path = str(report_path)
+            state.messages.append(f"Saved Markdown report to {report_path}.")
+
         sent = self.messenger.send(markdown)
         state.messages.append(f"Messenger delivery enabled: {sent}.")
 
@@ -87,4 +96,3 @@ class QaReportOrchestrator:
         if state.report is None:
             raise RuntimeError("Report generation failed.")
         return state.report.to_markdown()
-

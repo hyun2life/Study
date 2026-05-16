@@ -13,6 +13,9 @@ class Settings(BaseModel):
     github_owner: str = Field(default="example-org")
     github_repo: str = Field(default="example-repo")
     report_title: str = Field(default="QA Daily Report")
+    report_timezone: str = Field(default="Asia/Seoul")
+    report_output_dir: str = Field(default="reports")
+    save_report_to_file: bool = Field(default=True)
     messenger_enabled: bool = Field(default=False)
 
     @classmethod
@@ -23,6 +26,8 @@ class Settings(BaseModel):
             github_owner=os.getenv("GITHUB_OWNER", "example-org"),
             github_repo=os.getenv("GITHUB_REPO", "example-repo"),
             report_title=os.getenv("REPORT_TITLE", "QA Daily Report"),
+            report_timezone=os.getenv("REPORT_TIMEZONE", "Asia/Seoul"),
+            report_output_dir=os.getenv("REPORT_OUTPUT_DIR", "reports"),
+            save_report_to_file=os.getenv("SAVE_REPORT_TO_FILE", "true").lower() == "true",
             messenger_enabled=os.getenv("MESSENGER_ENABLED", "false").lower() == "true",
         )
-
