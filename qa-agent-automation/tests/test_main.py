@@ -12,6 +12,9 @@ class Args:
     owner = "acme"
     repo = "qa-demo"
     title = "QA Demo"
+    scenario = None
+    profile = None
+    profile_file = "config/report_profiles.yaml"
     output_dir = "tmp-reports"
     timezone = "Asia/Seoul"
     preview = "paths"
@@ -22,6 +25,8 @@ class Args:
     no_ko_html = False
     ko_only = True
     no_manifest = False
+    no_index = False
+    no_email_payload = False
 
 
 def test_settings_from_args_supports_ko_only() -> None:
@@ -35,6 +40,8 @@ def test_settings_from_args_supports_ko_only() -> None:
     assert settings.save_report_to_file is False
     assert settings.save_html_report_to_file is False
     assert settings.save_korean_html_report_to_file is True
+    assert settings.save_index_to_file is True
+    assert settings.save_email_payload_to_file is True
 
 
 def test_artifact_paths_filters_missing_values() -> None:
@@ -43,11 +50,15 @@ def test_artifact_paths_filters_missing_values() -> None:
         report_path=None,
         html_report_path="reports/demo.html",
         korean_html_report_path="reports/demo.ko.html",
+        email_payload_path="reports/demo.email.json",
         manifest_path="reports/demo.manifest.json",
+        index_path="reports/index.html",
     )
 
     assert artifact_paths(state) == {
         "html": "reports/demo.html",
         "html_ko": "reports/demo.ko.html",
+        "email_payload": "reports/demo.email.json",
         "manifest": "reports/demo.manifest.json",
+        "index": "reports/index.html",
     }

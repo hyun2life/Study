@@ -9,6 +9,7 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from app.config_profiles import load_profile
 from app.config import Settings
 from app.orchestrator import QaReportOrchestrator
 from app.schemas.state import AutomationState
@@ -20,6 +21,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--owner", help="GitHub owner or organization name.")
     parser.add_argument("--repo", help="GitHub repository name.")
     parser.add_argument("--title", help="Report title.")
+    parser.add_argument(
+        "--scenario",
+        choices=["normal", "release-risk", "quiet"],
+        help="Mock issue scenario to render.",
+    )
+    parser.add_argument("--profile", help="Named report profile to load.")
+    parser.add_argument(
+        "--profile-file",
+        default="config/report_profiles.yaml",
+        help="Path to the simple YAML report profile file.",
+    )
     parser.add_argument("--output-dir", help="Directory for generated reports.")
     parser.add_argument("--timezone", help="Report timezone, for example Asia/Seoul.")
     parser.add_argument(
@@ -63,6 +75,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not save the generated artifact manifest JSON file.",
     )
+    parser.add_argument(
+        "--no-index",
+        action="store_true",
+        help="Do not save reports/index.html.",
+    )
+    parser.add_argument(
+        "--no-email-payload",
+        action="store_true",
+        help="Do not save the mock email payload JSON file.",
+    )
     return parser
 
 
@@ -71,12 +93,28 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
     settings = Settings.from_env()
     updates: dict[str, object] = {}
 
+    if args.profile:
+        profile = load_profile(args.profile, args.profile_file)
+        profile_mapping = {
+            "owner": "github_owner",
+            "repo": "github_repo",
+            "title": "report_title",
+            "output_dir": "report_output_dir",
+            "timezone": "report_timezone",
+            "scenario": "mock_scenario",
+        }
+        for profile_key, settings_key in profile_mapping.items():
+            if profile_key in profile:
+                updates[settings_key] = profile[profile_key]
+
     if args.owner:
         updates["github_owner"] = args.owner
     if args.repo:
         updates["github_repo"] = args.repo
     if args.title:
         updates["report_title"] = args.title
+    if args.scenario:
+        updates["mock_scenario"] = args.scenario
     if args.output_dir:
         updates["report_output_dir"] = args.output_dir
     if args.timezone:
@@ -96,6 +134,10 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
 
     if args.no_manifest:
         updates["save_manifest_to_file"] = False
+    if args.no_index:
+        updates["save_index_to_file"] = False
+    if args.no_email_payload:
+        updates["save_email_payload_to_file"] = False
 
     return settings.model_copy(update=updates)
 
@@ -106,7 +148,9 @@ def artifact_paths(state: AutomationState) -> dict[str, str]:
         "markdown": state.report_path,
         "html": state.html_report_path,
         "html_ko": state.korean_html_report_path,
+        "email_payload": state.email_payload_path,
         "manifest": state.manifest_path,
+        "index": state.index_path,
     }
     return {key: value for key, value in paths.items() if value}
 

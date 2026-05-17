@@ -10,6 +10,7 @@ from app.config import Settings
 from app.schemas.state import AutomationState
 from app.storage.report_store import ReportStore
 from app.storage.run_store import RunStore
+from app.tools.email_client import EmailClient
 from app.tools.github_client import GitHubClient
 from app.tools.messenger import Messenger
 
@@ -25,6 +26,7 @@ class QaReportOrchestrator:
         reviewer: ReviewerAgent,
         reporter: ReporterAgent,
         messenger: Messenger,
+        email_client: EmailClient,
         run_store: RunStore,
         report_store: ReportStore,
     ) -> None:
@@ -34,6 +36,7 @@ class QaReportOrchestrator:
         self.reviewer = reviewer
         self.reporter = reporter
         self.messenger = messenger
+        self.email_client = email_client
         self.run_store = run_store
         self.report_store = report_store
 
@@ -44,6 +47,7 @@ class QaReportOrchestrator:
             owner=settings.github_owner,
             repo=settings.github_repo,
             use_mock=True,
+            scenario=settings.mock_scenario,
         )
         return cls(
             settings=settings,
@@ -52,6 +56,10 @@ class QaReportOrchestrator:
             reviewer=ReviewerAgent(),
             reporter=ReporterAgent(timezone_name=settings.report_timezone),
             messenger=Messenger(enabled=settings.messenger_enabled),
+            email_client=EmailClient(
+                enabled=settings.email_enabled,
+                recipients=settings.email_recipients,
+            ),
             run_store=RunStore(),
             report_store=ReportStore(settings.report_output_dir),
         )
@@ -97,6 +105,31 @@ class QaReportOrchestrator:
             state.korean_html_report_path = str(korean_html_path)
             state.messages.append(f"Saved Korean HTML report to {korean_html_path}.")
 
+        if self.settings.save_email_payload_to_file:
+            html_body = state.report.to_korean_html()
+            payload = self.email_client.build_report_email(
+                report=state.report,
+                html_body=html_body,
+                text_body=markdown,
+                attachments=[
+                    path
+                    for path in [
+                        state.report_path,
+                        state.html_report_path,
+                        state.korean_html_report_path,
+                    ]
+                    if path
+                ],
+                language="ko",
+            )
+            email_payload_path = self.report_store.save_email_payload(
+                state.report, payload
+            )
+            state.email_payload_path = str(email_payload_path)
+            result = self.email_client.send(payload)
+            state.email_sent = result.sent
+            state.messages.append(result.message)
+
         if self.settings.save_manifest_to_file:
             manifest_path = self.report_store.save_manifest(
                 state.report,
@@ -104,10 +137,16 @@ class QaReportOrchestrator:
                     "markdown": state.report_path,
                     "html": state.html_report_path,
                     "html_ko": state.korean_html_report_path,
+                    "email_payload": state.email_payload_path,
                 },
             )
             state.manifest_path = str(manifest_path)
             state.messages.append(f"Saved report manifest to {manifest_path}.")
+
+        if self.settings.save_index_to_file:
+            index_path = self.report_store.save_index()
+            state.index_path = str(index_path)
+            state.messages.append(f"Saved report index to {index_path}.")
 
         sent = self.messenger.send(markdown)
         state.messages.append(f"Messenger delivery enabled: {sent}.")

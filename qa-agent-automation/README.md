@@ -61,7 +61,9 @@ python app/main.py
 reports/YYYY-MM-DD.md
 reports/YYYY-MM-DD.html
 reports/YYYY-MM-DD.ko.html
+reports/YYYY-MM-DD.email.json
 reports/YYYY-MM-DD.manifest.json
+reports/index.html
 ```
 
 ## CLI 옵션
@@ -88,6 +90,14 @@ python app/main.py --preview paths
 python app/main.py --ko-only --preview paths --open-html ko
 ```
 
+시나리오와 profile을 바꿔 리포트 상태를 비교할 수 있습니다.
+
+```bash
+python app/main.py --scenario release-risk --preview paths
+python app/main.py --scenario quiet --preview paths
+python app/main.py --profile release-risk --preview paths
+```
+
 저장 옵션:
 
 ```bash
@@ -95,6 +105,8 @@ python app/main.py --no-markdown
 python app/main.py --no-html
 python app/main.py --no-ko-html
 python app/main.py --no-manifest
+python app/main.py --no-index
+python app/main.py --no-email-payload
 ```
 
 ## 샘플 리포트
@@ -117,6 +129,18 @@ pytest
 qa-agent-automation\.venv\Scripts\python -m pytest qa-agent-automation\tests
 ```
 
+## 코드 품질
+
+`pyproject.toml`에 pytest, ruff, mypy 기본 설정을 포함했습니다. 개발용 도구를 설치하려면 아래 명령을 사용합니다.
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+mypy app
+```
+
+GitHub Actions workflow도 저장소 루트 `.github/workflows/qa-agent-automation-tests.yml`에 포함되어 있어 `qa-agent-automation/**` 변경 시 pytest를 실행할 수 있습니다.
+
 ## 환경 변수
 
 ```bash
@@ -126,6 +150,10 @@ SAVE_REPORT_TO_FILE=true
 SAVE_HTML_REPORT_TO_FILE=true
 SAVE_KOREAN_HTML_REPORT_TO_FILE=true
 SAVE_MANIFEST_TO_FILE=true
+SAVE_INDEX_TO_FILE=true
+SAVE_EMAIL_PAYLOAD_TO_FILE=true
+EMAIL_ENABLED=false
+EMAIL_RECIPIENTS=qa-team@example.com
 ```
 
 ## 확장 지점
@@ -136,3 +164,4 @@ SAVE_MANIFEST_TO_FILE=true
 - `app/mock_data/issues.py`: mock issue data 관리 위치
 - `app/renderers/`: Markdown, 영어 HTML, 한국어 HTML 출력 포맷 관리 위치
 - `app/storage/report_store.py`: 리포트 파일과 manifest 저장 위치
+- `.github/workflows/qa-agent-automation-tests.yml`: GitHub Actions pytest workflow

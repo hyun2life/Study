@@ -7,8 +7,17 @@ from datetime import datetime, timedelta, timezone
 from app.schemas.issue import Issue
 
 
-def build_mock_issues(owner: str, repo: str) -> list[Issue]:
+def build_mock_issues(owner: str, repo: str, scenario: str = "normal") -> list[Issue]:
     """Return realistic mock issues for the configured repository."""
+    if scenario == "quiet":
+        return build_quiet_day_issues(owner=owner, repo=repo)
+    if scenario == "release-risk":
+        return build_release_risk_issues(owner=owner, repo=repo)
+    return build_normal_day_issues(owner=owner, repo=repo)
+
+
+def build_normal_day_issues(owner: str, repo: str) -> list[Issue]:
+    """Return a normal QA day with a mix of issue types."""
     now = datetime.now(timezone.utc)
     return [
         Issue(
@@ -114,5 +123,75 @@ def build_mock_issues(owner: str, repo: str) -> list[Issue]:
             url=f"https://github.com/{owner}/{repo}/issues/38",
             created_at=now - timedelta(days=5),
             updated_at=now - timedelta(days=1, hours=3),
+        ),
+    ]
+
+
+def build_release_risk_issues(owner: str, repo: str) -> list[Issue]:
+    """Return a risk-heavy QA day for release readiness demos."""
+    issues = build_normal_day_issues(owner=owner, repo=repo)
+    now = datetime.now(timezone.utc)
+    issues.extend(
+        [
+            Issue(
+                id=2001,
+                number=41,
+                title="Production smoke test fails after payment callback",
+                body="Smoke test returns a 500 error after the payment provider callback.",
+                labels=["bug", "p0", "release-blocker", "payments"],
+                author="qa-lead",
+                assignees=["dev-payment"],
+                milestone="May Release",
+                url=f"https://github.com/{owner}/{repo}/issues/41",
+                created_at=now - timedelta(hours=1),
+                updated_at=now - timedelta(minutes=10),
+            ),
+            Issue(
+                id=2002,
+                number=42,
+                title="Regression: order confirmation email is not sent",
+                body="The confirmation email path stopped working after the latest merge.",
+                labels=["regression", "email", "p1"],
+                author="qa-min",
+                assignees=["dev-mail"],
+                milestone="May Release",
+                url=f"https://github.com/{owner}/{repo}/issues/42",
+                created_at=now - timedelta(hours=3),
+                updated_at=now - timedelta(minutes=20),
+            ),
+        ]
+    )
+    return issues
+
+
+def build_quiet_day_issues(owner: str, repo: str) -> list[Issue]:
+    """Return a low-risk QA day for empty and calm-state demos."""
+    now = datetime.now(timezone.utc)
+    return [
+        Issue(
+            id=3001,
+            number=51,
+            title="Update QA onboarding checklist copy",
+            body="Refresh wording for the onboarding checklist before the next QA sync.",
+            labels=["docs", "process"],
+            author="qa-min",
+            assignees=["qa-min"],
+            milestone="Process",
+            url=f"https://github.com/{owner}/{repo}/issues/51",
+            created_at=now - timedelta(days=2),
+            updated_at=now - timedelta(hours=3),
+        ),
+        Issue(
+            id=3002,
+            number=52,
+            title="Improve empty-state screenshot in test guide",
+            body="The screenshot in the test guide is outdated.",
+            labels=["enhancement", "docs"],
+            author="qa-seo",
+            assignees=["qa-seo"],
+            milestone="Backlog",
+            url=f"https://github.com/{owner}/{repo}/issues/52",
+            created_at=now - timedelta(days=4),
+            updated_at=now - timedelta(days=1),
         ),
     ]

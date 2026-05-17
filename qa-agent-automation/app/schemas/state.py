@@ -24,6 +24,9 @@ class AutomationState(BaseModel):
     html_report_path: str | None = None
     korean_html_report_path: str | None = None
     manifest_path: str | None = None
+    index_path: str | None = None
+    email_payload_path: str | None = None
+    email_sent: bool = False
     messages: list[str] = Field(default_factory=list)
 
     def mark_finished(self) -> None:
