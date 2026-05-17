@@ -34,6 +34,7 @@ python app/main.py --preview paths --show-paths
 - [`qa-agent-automation/docs/integration-plan.md`](qa-agent-automation/docs/integration-plan.md): GitHub, 이메일, Slack/Discord 연동 계획
 - [`qa-agent-automation/docs/production-readiness.md`](qa-agent-automation/docs/production-readiness.md): 회사 환경 운영 전 체크리스트
 - [`qa-agent-automation/docs/company-adoption-guide.md`](qa-agent-automation/docs/company-adoption-guide.md): 입사 직후 적용 가이드
+- [`qa-agent-automation/docs/access-from-company.md`](qa-agent-automation/docs/access-from-company.md): 회사 PC에서 다시 보는 방법
 
 검수:
 

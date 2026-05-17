@@ -126,6 +126,7 @@ GitHub에서 바로 볼 수 있는 샘플을 포함했습니다.
 - `docs/integration-plan.md`: GitHub, 이메일, Slack/Discord, 스케줄러 연동 계획
 - `docs/production-readiness.md`: 운영 전 설정, secret, dry-run, 실패 처리 체크리스트
 - `docs/company-adoption-guide.md`: 입사 직후 회사 환경에 적용하기 위한 질문과 실행 순서
+- `docs/access-from-company.md`: 회사 PC에서 GitHub로 다시 확인하고 실행하는 방법
 
 ## 테스트
 
