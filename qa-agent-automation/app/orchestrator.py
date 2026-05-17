@@ -97,6 +97,18 @@ class QaReportOrchestrator:
             state.korean_html_report_path = str(korean_html_path)
             state.messages.append(f"Saved Korean HTML report to {korean_html_path}.")
 
+        if self.settings.save_manifest_to_file:
+            manifest_path = self.report_store.save_manifest(
+                state.report,
+                {
+                    "markdown": state.report_path,
+                    "html": state.html_report_path,
+                    "html_ko": state.korean_html_report_path,
+                },
+            )
+            state.manifest_path = str(manifest_path)
+            state.messages.append(f"Saved report manifest to {manifest_path}.")
+
         sent = self.messenger.send(markdown)
         state.messages.append(f"Messenger delivery enabled: {sent}.")
 

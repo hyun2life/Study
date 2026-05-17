@@ -29,6 +29,7 @@ def test_orchestrator_generates_report_from_mock_issues(tmp_path) -> None:
     assert state.report_path is not None
     assert state.html_report_path is not None
     assert state.korean_html_report_path is not None
+    assert state.manifest_path is not None
     assert "Daily QA Report" in tmp_path.joinpath(Path(state.report_path).name).read_text(
         encoding="utf-8"
     )
@@ -38,6 +39,9 @@ def test_orchestrator_generates_report_from_mock_issues(tmp_path) -> None:
     assert "QA 데일리 리포트" in tmp_path.joinpath(
         Path(state.korean_html_report_path).name
     ).read_text(encoding="utf-8")
+    assert '"html_ko"' in tmp_path.joinpath(Path(state.manifest_path).name).read_text(
+        encoding="utf-8"
+    )
 
 
 def test_orchestrator_renders_markdown(tmp_path) -> None:

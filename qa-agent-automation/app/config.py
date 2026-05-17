@@ -18,6 +18,7 @@ class Settings(BaseModel):
     save_report_to_file: bool = Field(default=True)
     save_html_report_to_file: bool = Field(default=True)
     save_korean_html_report_to_file: bool = Field(default=True)
+    save_manifest_to_file: bool = Field(default=True)
     messenger_enabled: bool = Field(default=False)
 
     @classmethod
@@ -36,6 +37,8 @@ class Settings(BaseModel):
             save_korean_html_report_to_file=os.getenv(
                 "SAVE_KOREAN_HTML_REPORT_TO_FILE", "true"
             ).lower()
+            == "true",
+            save_manifest_to_file=os.getenv("SAVE_MANIFEST_TO_FILE", "true").lower()
             == "true",
             messenger_enabled=os.getenv("MESSENGER_ENABLED", "false").lower() == "true",
         )

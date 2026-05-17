@@ -1,6 +1,6 @@
 # QA Daily Report Bot
 
-Mock 기반으로 GitHub Issue를 수집하고, QA 관점에서 분류한 뒤, Markdown 일일 리포트를 생성하는 Python 프로젝트입니다.
+Mock GitHub Issue 데이터를 수집하고, QA 관점으로 분류한 뒤, Markdown과 이메일용 HTML 리포트를 생성하는 Python 프로젝트입니다.
 
 현재 범위에서는 OpenAI API, GitHub API, Discord/Slack 전송을 실제로 호출하지 않습니다. 모든 흐름은 mock issue data로 동작합니다.
 
@@ -13,31 +13,22 @@ qa-agent-automation/
 │  ├─ orchestrator.py
 │  ├─ config.py
 │  ├─ agents/
-│  │  ├─ collector_agent.py
-│  │  ├─ classifier_agent.py
-│  │  ├─ reporter_agent.py
-│  │  └─ reviewer_agent.py
-│  ├─ tools/
-│  │  ├─ github_client.py
-│  │  └─ messenger.py
+│  ├─ mock_data/
+│  │  └─ issues.py
+│  ├─ renderers/
+│  │  ├─ base.py
+│  │  ├─ markdown_renderer.py
+│  │  └─ html_renderer.py
 │  ├─ schemas/
-│  │  ├─ issue.py
-│  │  ├─ report.py
-│  │  └─ state.py
-│  └─ storage/
-│     ├─ report_store.py
-│     └─ run_store.py
-├─ reports/
-│  └─ YYYY-MM-DD.md
+│  ├─ storage/
+│  └─ tools/
 ├─ docs/
+│  ├─ sample-report.md
 │  ├─ sample-report.html
-│  ├─ sample-report-ko.html
-│  └─ sample-report.md
+│  └─ sample-report-ko.html
 ├─ tests/
-│  └─ test_orchestrator.py
 ├─ .env.example
 ├─ requirements.txt
-├─ README.md
 └─ .gitignore
 ```
 
@@ -58,21 +49,61 @@ source .venv/bin/activate
 
 ## 실행
 
-프로젝트 루트에서 아래 명령을 실행하면 mock issue 데이터를 기반으로 Markdown 리포트가 콘솔에 출력됩니다.
+기본 실행은 mock issue 데이터를 기반으로 Markdown 리포트를 콘솔에 출력하고, 리포트 파일들을 `reports/`에 저장합니다.
 
 ```bash
 python app/main.py
 ```
 
-기본 설정에서는 같은 리포트가 `reports/YYYY-MM-DD.md`, `reports/YYYY-MM-DD.html`, `reports/YYYY-MM-DD.ko.html` 파일로도 저장됩니다.
-HTML 리포트는 이메일 본문에 넣기 쉬운 인라인 스타일 기반이며, 영어/한국어 버전을 함께 생성합니다.
-GitHub에서 바로 볼 수 있는 샘플은 `docs/sample-report.md`, `docs/sample-report.html`, `docs/sample-report-ko.html`에 포함되어 있습니다.
+생성 파일:
 
-또는 모듈 방식으로 실행할 수도 있습니다.
+```text
+reports/YYYY-MM-DD.md
+reports/YYYY-MM-DD.html
+reports/YYYY-MM-DD.ko.html
+reports/YYYY-MM-DD.manifest.json
+```
+
+## CLI 옵션
+
+저장소명, 제목, 출력 폴더를 실행 시점에 바꿀 수 있습니다.
 
 ```bash
-python -m app.main
+python app/main.py --owner my-org --repo my-repo --title "QA 일일 리포트"
+python app/main.py --output-dir demo-reports --show-paths
 ```
+
+미리보기 출력 형식을 선택할 수 있습니다.
+
+```bash
+python app/main.py --preview markdown
+python app/main.py --preview html
+python app/main.py --preview html-ko
+python app/main.py --preview paths
+```
+
+한국어 HTML만 저장하는 데모도 가능합니다.
+
+```bash
+python app/main.py --ko-only --preview paths --open-html ko
+```
+
+저장 옵션:
+
+```bash
+python app/main.py --no-markdown
+python app/main.py --no-html
+python app/main.py --no-ko-html
+python app/main.py --no-manifest
+```
+
+## 샘플 리포트
+
+GitHub에서 바로 볼 수 있는 샘플을 포함했습니다.
+
+- `docs/sample-report.md`
+- `docs/sample-report.html`
+- `docs/sample-report-ko.html`
 
 ## 테스트
 
@@ -80,13 +111,11 @@ python -m app.main
 pytest
 ```
 
-## 확장 지점
+부모 폴더에서도 아래 방식으로 실행할 수 있습니다.
 
-- `app/tools/github_client.py`: 실제 GitHub API 연동 위치
-- `app/tools/messenger.py`: Discord 또는 Slack 전송 연동 위치
-- `app/agents/classifier_agent.py`: QA 분류 규칙 또는 향후 LLM 기반 분류 로직 위치
-- `app/storage/report_store.py`: Markdown 리포트 파일 저장 위치
-- `app/storage/run_store.py`: 파일, DB, S3 등 영속 저장소로 교체할 위치
+```bash
+qa-agent-automation\.venv\Scripts\python -m pytest qa-agent-automation\tests
+```
 
 ## 환경 변수
 
@@ -96,4 +125,14 @@ REPORT_OUTPUT_DIR=reports
 SAVE_REPORT_TO_FILE=true
 SAVE_HTML_REPORT_TO_FILE=true
 SAVE_KOREAN_HTML_REPORT_TO_FILE=true
+SAVE_MANIFEST_TO_FILE=true
 ```
+
+## 확장 지점
+
+- `app/tools/github_client.py`: 실제 GitHub API 연동 위치
+- `app/tools/messenger.py`: Discord, Slack, 이메일 전송 연동 위치
+- `app/agents/classifier_agent.py`: QA 분류 규칙 또는 향후 LLM 기반 분류 로직 위치
+- `app/mock_data/issues.py`: mock issue data 관리 위치
+- `app/renderers/`: Markdown, 영어 HTML, 한국어 HTML 출력 포맷 관리 위치
+- `app/storage/report_store.py`: 리포트 파일과 manifest 저장 위치
