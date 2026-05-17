@@ -35,7 +35,8 @@
 3. `python app/main.py --scenario quiet --preview paths`로 이슈가 적은 날의 모양을 확인합니다.
 4. `reports/YYYY-MM-DD.ko.html`을 브라우저에서 열어 한글 HTML 이메일 가독성을 확인합니다.
 5. `reports/YYYY-MM-DD.email.json`에서 subject, recipients, attachments가 예상대로인지 확인합니다.
-6. `pytest`를 실행해 orchestrator, renderer, CLI 테스트를 통과시킵니다.
+6. `reports/YYYY-MM-DD.json`에서 사내 대시보드나 DB로 넘길 구조화 데이터가 충분한지 확인합니다.
+7. `pytest`를 실행해 orchestrator, renderer, CLI 테스트를 통과시킵니다.
 
 ## 운영 모드 전환 기준
 

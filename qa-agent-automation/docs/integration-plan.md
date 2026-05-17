@@ -9,10 +9,11 @@
 권장 구현 순서:
 
 1. `.env`에 `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`를 추가합니다.
-2. GitHub REST API 또는 GraphQL API에서 open issue를 조회합니다.
-3. GitHub API 응답을 `Issue` Pydantic schema로 정규화합니다.
-4. label, milestone, assignee, updated time 기준 필터를 config로 분리합니다.
-5. pagination과 rate limit 처리를 추가합니다.
+2. `app/tools/issue_provider.py`의 `RealGitHubIssueProvider`에 실제 호출을 구현합니다.
+3. GitHub REST API 또는 GraphQL API에서 open issue를 조회합니다.
+4. GitHub API 응답을 `Issue` Pydantic schema로 정규화합니다.
+5. label, milestone, assignee, updated time 기준 필터를 config로 분리합니다.
+6. pagination과 rate limit 처리를 추가합니다.
 
 권한 선택:
 

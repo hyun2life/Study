@@ -66,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not save the Korean HTML report file.",
     )
     parser.add_argument(
+        "--no-json",
+        action="store_true",
+        help="Do not save the structured JSON report file.",
+    )
+    parser.add_argument(
         "--ko-only",
         action="store_true",
         help="Save only the Korean HTML report and manifest.",
@@ -132,6 +137,8 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         if args.no_ko_html:
             updates["save_korean_html_report_to_file"] = False
 
+    if args.no_json:
+        updates["save_json_report_to_file"] = False
     if args.no_manifest:
         updates["save_manifest_to_file"] = False
     if args.no_index:
@@ -148,6 +155,7 @@ def artifact_paths(state: AutomationState) -> dict[str, str]:
         "markdown": state.report_path,
         "html": state.html_report_path,
         "html_ko": state.korean_html_report_path,
+        "json": state.json_report_path,
         "email_payload": state.email_payload_path,
         "manifest": state.manifest_path,
         "index": state.index_path,

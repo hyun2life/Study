@@ -59,6 +59,7 @@
 | `YYYY-MM-DD.md` | 콘솔, GitHub comment, 텍스트 메신저용 Markdown |
 | `YYYY-MM-DD.html` | 영문 이메일 미리보기용 HTML |
 | `YYYY-MM-DD.ko.html` | 한글 이메일 미리보기용 HTML |
+| `YYYY-MM-DD.json` | 사내 대시보드, DB 저장, 후속 자동화용 구조화 데이터 |
 | `YYYY-MM-DD.email.json` | 향후 이메일 provider에 전달할 dry-run payload |
 | `YYYY-MM-DD.manifest.json` | 생성 산출물 경로 목록 |
 | `index.html` | 여러 리포트를 브라우저에서 빠르게 확인하는 인덱스 |

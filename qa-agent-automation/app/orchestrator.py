@@ -105,6 +105,11 @@ class QaReportOrchestrator:
             state.korean_html_report_path = str(korean_html_path)
             state.messages.append(f"Saved Korean HTML report to {korean_html_path}.")
 
+        if self.settings.save_json_report_to_file:
+            json_report_path = self.report_store.save_json(state.report)
+            state.json_report_path = str(json_report_path)
+            state.messages.append(f"Saved JSON report to {json_report_path}.")
+
         if self.settings.save_email_payload_to_file:
             html_body = state.report.to_korean_html()
             payload = self.email_client.build_report_email(
@@ -137,6 +142,7 @@ class QaReportOrchestrator:
                     "markdown": state.report_path,
                     "html": state.html_report_path,
                     "html_ko": state.korean_html_report_path,
+                    "json": state.json_report_path,
                     "email_payload": state.email_payload_path,
                 },
             )

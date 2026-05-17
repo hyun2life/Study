@@ -19,6 +19,7 @@ class Settings(BaseModel):
     save_report_to_file: bool = Field(default=True)
     save_html_report_to_file: bool = Field(default=True)
     save_korean_html_report_to_file: bool = Field(default=True)
+    save_json_report_to_file: bool = Field(default=True)
     save_manifest_to_file: bool = Field(default=True)
     save_index_to_file: bool = Field(default=True)
     save_email_payload_to_file: bool = Field(default=True)
@@ -43,6 +44,8 @@ class Settings(BaseModel):
             save_korean_html_report_to_file=os.getenv(
                 "SAVE_KOREAN_HTML_REPORT_TO_FILE", "true"
             ).lower()
+            == "true",
+            save_json_report_to_file=os.getenv("SAVE_JSON_REPORT_TO_FILE", "true").lower()
             == "true",
             save_manifest_to_file=os.getenv("SAVE_MANIFEST_TO_FILE", "true").lower()
             == "true",

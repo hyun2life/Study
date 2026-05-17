@@ -23,6 +23,7 @@ class AutomationState(BaseModel):
     report_path: str | None = None
     html_report_path: str | None = None
     korean_html_report_path: str | None = None
+    json_report_path: str | None = None
     manifest_path: str | None = None
     index_path: str | None = None
     email_payload_path: str | None = None

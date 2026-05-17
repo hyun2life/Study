@@ -40,6 +40,17 @@ class ReportStore:
         report_path.write_text(html, encoding="utf-8")
         return report_path
 
+    def save_json(self, report: QaReport) -> Path:
+        """Save a structured report as reports/YYYY-MM-DD.json and return the path."""
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        report_date = report.generated_at.date().isoformat()
+        report_path = self.output_dir / f"{report_date}.json"
+        report_path.write_text(
+            report.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return report_path
+
     def save_manifest(self, report: QaReport, paths: dict[str, str | None]) -> Path:
         """Save generated report artifact paths as JSON."""
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -74,12 +85,13 @@ class ReportStore:
                 f"<td>{self._artifact_link(artifacts.get('markdown'), 'Markdown')}</td>"
                 f"<td>{self._artifact_link(artifacts.get('html'), 'HTML')}</td>"
                 f"<td>{self._artifact_link(artifacts.get('html_ko'), 'HTML KO')}</td>"
+                f"<td>{self._artifact_link(artifacts.get('json'), 'JSON')}</td>"
                 "</tr>"
             )
 
         index_path = self.output_dir / "index.html"
         index_path.write_text(
-            self._index_html("".join(rows) or "<tr><td colspan='6'>No reports yet.</td></tr>"),
+            self._index_html("".join(rows) or "<tr><td colspan='7'>No reports yet.</td></tr>"),
             encoding="utf-8",
         )
         return index_path
@@ -118,6 +130,6 @@ class ReportStore:
             "<tr style=\"background:#edf2f7;\"><th align=\"left\">Generated</th>"
             "<th align=\"left\">Repository</th><th align=\"left\">Issues</th>"
             "<th align=\"left\">Markdown</th><th align=\"left\">HTML</th>"
-            "<th align=\"left\">HTML KO</th></tr>"
+            "<th align=\"left\">HTML KO</th><th align=\"left\">JSON</th></tr>"
             f"{rows}</table></main></body></html>"
         )

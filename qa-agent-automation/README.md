@@ -61,6 +61,7 @@ python app/main.py
 reports/YYYY-MM-DD.md
 reports/YYYY-MM-DD.html
 reports/YYYY-MM-DD.ko.html
+reports/YYYY-MM-DD.json
 reports/YYYY-MM-DD.email.json
 reports/YYYY-MM-DD.manifest.json
 reports/index.html
@@ -104,6 +105,7 @@ python app/main.py --profile release-risk --preview paths
 python app/main.py --no-markdown
 python app/main.py --no-html
 python app/main.py --no-ko-html
+python app/main.py --no-json
 python app/main.py --no-manifest
 python app/main.py --no-index
 python app/main.py --no-email-payload
@@ -123,6 +125,7 @@ GitHub에서 바로 볼 수 있는 샘플을 포함했습니다.
 - `docs/data-contract.md`: GitHub Issue 입력, QA 분류 결과, 리포트 산출물 schema
 - `docs/integration-plan.md`: GitHub, 이메일, Slack/Discord, 스케줄러 연동 계획
 - `docs/production-readiness.md`: 운영 전 설정, secret, dry-run, 실패 처리 체크리스트
+- `docs/company-adoption-guide.md`: 입사 직후 회사 환경에 적용하기 위한 질문과 실행 순서
 
 ## 테스트
 
@@ -156,6 +159,7 @@ REPORT_OUTPUT_DIR=reports
 SAVE_REPORT_TO_FILE=true
 SAVE_HTML_REPORT_TO_FILE=true
 SAVE_KOREAN_HTML_REPORT_TO_FILE=true
+SAVE_JSON_REPORT_TO_FILE=true
 SAVE_MANIFEST_TO_FILE=true
 SAVE_INDEX_TO_FILE=true
 SAVE_EMAIL_PAYLOAD_TO_FILE=true
