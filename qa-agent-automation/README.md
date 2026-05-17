@@ -117,6 +117,13 @@ GitHub에서 바로 볼 수 있는 샘플을 포함했습니다.
 - `docs/sample-report.html`
 - `docs/sample-report-ko.html`
 
+## 운영 준비 문서
+회사 환경에 실제 API와 이메일/메신저 전송을 연결하기 전에 아래 문서를 기준으로 검토할 수 있습니다.
+
+- `docs/data-contract.md`: GitHub Issue 입력, QA 분류 결과, 리포트 산출물 schema
+- `docs/integration-plan.md`: GitHub, 이메일, Slack/Discord, 스케줄러 연동 계획
+- `docs/production-readiness.md`: 운영 전 설정, secret, dry-run, 실패 처리 체크리스트
+
 ## 테스트
 
 ```bash
