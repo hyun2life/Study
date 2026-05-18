@@ -16,3 +16,6 @@ WSOP-QA-Automation/automation/.auth/
 WSOP-Player-Standings-Check/node_modules/
 WSOP-Player-Standings-Check/automation/.auth/
 WSOP-Player-Standings-Check/automation/output/wsop-player-standings-*
+WSOP-Player-Standings-Crawler/node_modules/
+WSOP-Player-Standings-Crawler/automation/.auth/
+WSOP-Player-Standings-Crawler/automation/output/wsop-player-crawler-*

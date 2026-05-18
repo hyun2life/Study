@@ -1,0 +1,34 @@
+@echo off
+setlocal
+
+cd /d "%~dp0"
+
+echo ============================================
+echo WSOP Player Standings Crawler
+echo ============================================
+echo.
+echo Chrome will open. Log in to the stage site if needed.
+echo The crawler will collect profile and Result page data.
+echo.
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "automation\run_player_standings_crawler.ps1" -Headed -AuthWaitMs 300000 -Limit 10 -ResultLimit 3
+set EXIT_CODE=%ERRORLEVEL%
+
+echo.
+if exist "automation\output\wsop-player-crawler-report.html" (
+  echo Opening generated crawler report.
+  start "" "automation\output\wsop-player-crawler-report.html"
+) else (
+  start "" "automation\output"
+)
+
+echo.
+if "%EXIT_CODE%"=="0" (
+  echo Crawl completed.
+) else (
+  echo Crawl found failures or could not complete. Review the report and message above.
+)
+
+echo.
+pause
+exit /b %EXIT_CODE%
