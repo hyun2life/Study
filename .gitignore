@@ -11,3 +11,5 @@ SNS_report/__pycache__/
 daughter-emoticons/__pycache__/
 daughter-emoticons/output/**/*.png
 daughter-emoticons/reference_style.png
+WSOP-QA-Automation/node_modules/
+WSOP-QA-Automation/automation/.auth/

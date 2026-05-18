@@ -1,0 +1,13 @@
+{
+  "name": "wsop-qa-automation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check:players": "node automation/check_players_standings.mjs",
+    "check:players:self-test": "node automation/check_players_standings.mjs --self-test"
+  },
+  "dependencies": {
+    "playwright": "1.60.0"
+  }
+}
