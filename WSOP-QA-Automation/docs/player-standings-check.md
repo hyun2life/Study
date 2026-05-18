@@ -43,6 +43,11 @@ The login profile is kept under `automation/.auth/wsop-player-check`, so later h
 
 - `automation/output/wsop-player-standings-report.json`
 - `automation/output/wsop-player-standings-report.csv`
+- `automation/output/wsop-player-standings-report.html`
+- `automation/output/wsop-player-standings-summary.json`
+- `automation/output/wsop-player-standings-defects.csv`
+
+The HTML report includes the overall status, defect candidates, top-vs-lower comparisons per player, Result page checks, and sample lower event rows.
 
 ## Validation Rules
 

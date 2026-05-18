@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "check:players": "node automation/check_players_standings.mjs",
-    "check:players:self-test": "node automation/check_players_standings.mjs --self-test"
+    "check:players:self-test": "node automation/check_players_standings.mjs --self-test",
+    "report:players": "node automation/generate_player_standings_report.mjs",
+    "report:players:self-test": "node automation/generate_player_standings_report.mjs --self-test"
   },
   "dependencies": {
     "playwright": "1.60.0"

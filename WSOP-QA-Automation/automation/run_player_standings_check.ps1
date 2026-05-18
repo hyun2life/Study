@@ -7,6 +7,9 @@ param(
   [string]$UserDataDir = "automation\.auth\wsop-player-check",
   [int]$AuthWaitMs = 0,
   [string]$Out = "automation\output\wsop-player-standings-report.json",
+  [string]$HtmlReport = "automation\output\wsop-player-standings-report.html",
+  [string]$SummaryReport = "automation\output\wsop-player-standings-summary.json",
+  [string]$DefectReport = "automation\output\wsop-player-standings-defects.csv",
   [switch]$Headed
 )
 
@@ -42,6 +45,21 @@ try {
   }
 
   node @scriptArgs
+  $checkExitCode = $LASTEXITCODE
+
+  if (Test-Path $Out) {
+    node automation\generate_player_standings_report.mjs `
+      --input $Out `
+      --html $HtmlReport `
+      --summary $SummaryReport `
+      --defects $DefectReport
+
+    if ($LASTEXITCODE -ne 0) {
+      exit $LASTEXITCODE
+    }
+  }
+
+  exit $checkExitCode
 }
 finally {
   Pop-Location

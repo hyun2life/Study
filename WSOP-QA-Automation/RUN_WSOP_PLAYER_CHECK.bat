@@ -20,9 +20,14 @@ if "%EXIT_CODE%"=="0" (
   echo Output:
   echo   automation\output\wsop-player-standings-report.json
   echo   automation\output\wsop-player-standings-report.csv
+  echo   automation\output\wsop-player-standings-report.html
   start "" "automation\output"
 ) else (
-  echo Check failed. Review the message above.
+  echo Check found failures or could not complete. Review the message above.
+  if exist "automation\output\wsop-player-standings-report.html" (
+    echo Opening generated report.
+    start "" "automation\output\wsop-player-standings-report.html"
+  )
 )
 
 echo.
