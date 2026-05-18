@@ -4,6 +4,12 @@ This check opens the WSOP players page, visits player profiles, compares the top
 
 ## Run
 
+For one-click execution, double-click this file:
+
+```text
+RUN_WSOP_PLAYER_CHECK.bat
+```
+
 Before using the stage site, you can verify the calculation rules locally:
 
 ```powershell
