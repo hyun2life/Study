@@ -13,4 +13,6 @@ daughter-emoticons/output/**/*.png
 daughter-emoticons/reference_style.png
 WSOP-QA-Automation/node_modules/
 WSOP-QA-Automation/automation/.auth/
-WSOP-QA-Automation/automation/output/wsop-player-standings-*
+WSOP-Player-Standings-Check/node_modules/
+WSOP-Player-Standings-Check/automation/.auth/
+WSOP-Player-Standings-Check/automation/output/wsop-player-standings-*

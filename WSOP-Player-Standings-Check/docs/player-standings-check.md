@@ -1,6 +1,8 @@
 # Player Standings Consistency Check
 
-This check opens the WSOP players page, visits player profiles, compares the top profile stats against the lower event table, and writes JSON/CSV evidence.
+This is a standalone web check for WSOP player profile data. It opens the WSOP players page, visits player profiles, compares the top profile stats against the lower event table, and writes JSON/CSV/HTML evidence.
+
+This folder is intentionally separate from `WSOP-QA-Automation`, which is for the broader app/Playwright QA automation pipeline.
 
 ## Run
 
