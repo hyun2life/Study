@@ -28,3 +28,24 @@ Player
 `WSOP-Player-Standings-Check`는 현재 사용 가능한 점검 버전입니다.
 
 `WSOP-Player-Standings-Crawler`는 다음 단계 자동화로, 플레이어 상세와 Result 페이지를 모두 크롤링해서 데이터 모델로 저장하고 비교합니다.
+
+## 라이브 실행
+
+라이브 `wsop.com` 기준으로 실행하려면 아래 배치 파일을 사용합니다.
+
+```text
+RUN_WSOP_PLAYER_CRAWLER_LIVE.bat
+```
+
+직접 명령어로 실행할 때는 `-PlayersUrl`만 라이브 URL로 바꾸면 됩니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File automation\run_player_standings_crawler.ps1 `
+  -PlayersUrl "https://www.wsop.com/player-standings/" `
+  -Headed `
+  -Limit 10 `
+  -ResultLimit 3 `
+  -Out "automation\output\wsop-player-crawler-live-data.json" `
+  -HtmlReport "automation\output\wsop-player-crawler-live-report.html" `
+  -DefectReport "automation\output\wsop-player-crawler-live-defects.csv"
+```

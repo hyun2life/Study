@@ -6,10 +6,18 @@ WSOP 웹 플레이어 데이터를 크롤링해서 구조화 데이터로 저장
 
 ## 실행
 
+스테이징 테스트 버전:
+
 아래 파일을 더블클릭합니다.
 
 ```text
 RUN_WSOP_PLAYER_CRAWLER.bat
+```
+
+라이브 `wsop.com` 버전:
+
+```text
+RUN_WSOP_PLAYER_CRAWLER_LIVE.bat
 ```
 
 ## 동작 방식
@@ -28,6 +36,8 @@ automation\output\wsop-player-crawler-data.json
 automation\output\wsop-player-crawler-report.html
 automation\output\wsop-player-crawler-defects.csv
 ```
+
+라이브 실행 결과는 파일명에 `live`가 붙습니다.
 
 ## 자체 검증
 

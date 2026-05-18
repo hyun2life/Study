@@ -18,6 +18,12 @@ Study\WSOP-Player-Standings-Check
 RUN_WSOP_PLAYER_CHECK.bat
 ```
 
+라이브 `wsop.com` 기준으로 실행하려면 이 파일을 더블클릭합니다.
+
+```text
+RUN_WSOP_PLAYER_CHECK_LIVE.bat
+```
+
 ## 실행 흐름
 
 1. Chrome 브라우저가 열립니다.
@@ -36,6 +42,17 @@ RUN_WSOP_PLAYER_CHECK.bat
 ```powershell
 cd C:\Users\USER1\Desktop\Study\WSOP-Player-Standings-Check
 powershell -ExecutionPolicy Bypass -File automation\run_player_standings_check.ps1 -Headed -AuthWaitMs 300000 -Limit 10 -ResultLimit 3
+```
+
+라이브 URL로 실행하려면 아래처럼 `-PlayersUrl`만 바꿉니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File automation\run_player_standings_check.ps1 `
+  -PlayersUrl "https://www.wsop.com/player-standings/" `
+  -Headed `
+  -Limit 10 `
+  -ResultLimit 3 `
+  -Out "automation\output\wsop-player-standings-live-report.json"
 ```
 
 특정 플레이어 URL만 확인할 수도 있습니다.
