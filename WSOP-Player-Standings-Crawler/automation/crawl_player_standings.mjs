@@ -269,6 +269,25 @@ function formatValue(label, value) {
   return typeof value === "number" ? value.toLocaleString("en-US") : String(value);
 }
 
+function formatLabel(label) {
+  return {
+    Title: "타이틀",
+    Bracelets: "브레이슬릿",
+    Rings: "링",
+    "Final Tables": "파이널 테이블",
+    Cashes: "입상 수",
+    "Total Earnings": "총 상금"
+  }[label] || label;
+}
+
+function formatStatus(status) {
+  return {
+    pass: "통과",
+    fail: "실패",
+    warn: "주의"
+  }[status] || status || "-";
+}
+
 function buildDefects(player) {
   const defects = [];
 
@@ -1057,6 +1076,35 @@ function formatResultFinding(event) {
   return `Missing: ${(result.missing || []).join(", ")}`;
 }
 
+function formatKoreanResultFinding(event) {
+  const result = event.resultPage;
+  if (!result) {
+    if (event.resultSkipped) return `건너뜀: ${event.resultSkipped}`;
+    if (event.resultUrl || event.hasResultControl) return "Result 확인 대기";
+    return "Result 버튼/링크 없음";
+  }
+  if (result.error) return result.error;
+  if (result.foundRow) {
+    return `일치 행 발견: No ${result.foundRow.no}, ${result.foundRow.player}, ${formatValue("Total Earnings", result.foundRow.earnings)}`;
+  }
+  return `누락: ${(result.missing || []).join(", ")}`;
+}
+
+function formatKoreanDefectType(type) {
+  return {
+    "Profile summary mismatch": "프로필 요약 불일치",
+    "Profile tab count mismatch": "프로필 탭 개수 불일치",
+    "Result page mismatch": "Result 페이지 불일치",
+    "Crawler warning": "크롤러 경고",
+    "Crawler error": "크롤러 오류"
+  }[type] || type;
+}
+
+function koreanHtmlPath(htmlPath) {
+  const parsed = path.parse(htmlPath);
+  return path.join(parsed.dir, `${parsed.name}-ko${parsed.ext || ".html"}`);
+}
+
 function renderHtml(report) {
   const summary = summarize(report);
   const defects = flattenDefects(report);
@@ -1163,6 +1211,112 @@ function renderHtml(report) {
 `;
 }
 
+function renderKoreanHtml(report) {
+  const summary = summarize(report);
+  const defects = flattenDefects(report);
+  const standingsSourceSummary = summarizeStandingsSources(report.players);
+  const rules = [
+    ["Standings 카테고리", `${STANDINGS_CATEGORIES.map((category) => category.label).join(", ")}에서 상위 선수를 수집합니다.`],
+    ["타이틀", "ALL 탭 이벤트 중 Rank가 1인 row를 계산합니다."],
+    ["브레이슬릿", "Rank 1 이벤트 중 WSOP 브레이슬릿 이벤트로 분류되는 row를 계산합니다."],
+    ["링", "Rank 1 이벤트 중 Circuit/Ring 이벤트로 분류되는 row를 계산합니다."],
+    ["파이널 테이블", "ALL 탭 이벤트 중 Rank가 1~9인 row를 계산합니다."],
+    ["입상 수", "Load more로 펼친 ALL 탭 전체 row 수를 계산합니다."],
+    ["프로필 탭", "Title, Bracelets, Rings, Final Tables 탭을 눌러 표시 row 수와 프로필 요약값을 비교합니다."],
+    ["Result", "Result 페이지를 열어 최종 결과표에서 No, 선수명, 상금이 맞는지 확인합니다."]
+  ];
+
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>WSOP 선수 순위 크롤러 리포트</title>
+  <style>
+    body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #17212b; background: #f4f6f8; }
+    main { max-width: 1440px; margin: 0 auto; padding: 28px; }
+    h1 { margin: 0; font-size: 28px; }
+    h2 { margin: 30px 0 8px; font-size: 20px; }
+    h3 { margin: 0; font-size: 18px; }
+    p { line-height: 1.45; }
+    a { color: #0b5cad; text-decoration: none; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; background: white; }
+    th, td { border-bottom: 1px solid #d9e0e7; padding: 9px; text-align: left; vertical-align: top; }
+    th { background: #263847; color: white; position: sticky; top: 0; }
+    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 18px; }
+    .card, .player, .panel { background: white; border: 1px solid #d9e0e7; border-radius: 6px; padding: 14px; }
+    .player { margin-top: 16px; }
+    .label { color: #667789; font-size: 12px; }
+    .value { font-size: 23px; font-weight: 700; margin-top: 5px; }
+    .muted { color: #667789; }
+    .pill { display: inline-block; min-width: 44px; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; text-align: center; text-transform: uppercase; }
+    .pass { background: #e3f7eb; color: #116b37; }
+    .fail { background: #fde8e8; color: #b42318; }
+    .warn { background: #fff4d6; color: #8a5a00; }
+    .table-wrap { overflow-x: auto; }
+    .small { font-size: 12px; }
+    .nowrap { white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>WSOP 선수 순위 크롤러 리포트 <span class="pill ${summary.status}">${escapeHtml(formatStatus(summary.status))}</span></h1>
+    <p class="muted">생성 시간: ${escapeHtml(new Date().toISOString())} | 대상: <a href="${escapeHtml(report.playersUrl || "")}">${escapeHtml(report.playersUrl || "")}</a></p>
+    <div class="summary">
+      <div class="card"><div class="label">확인한 Standings 카테고리</div><div class="value">${summary.checkedStandingsCategories}</div></div>
+      <div class="card"><div class="label">확인한 선수</div><div class="value">${summary.checkedPlayers}</div></div>
+      <div class="card"><div class="label">ALL 탭 이벤트 수집</div><div class="value">${summary.crawledEvents}</div></div>
+      <div class="card"><div class="label">프로필 탭 검증</div><div class="value">${summary.tabChecks}</div></div>
+      <div class="card"><div class="label">Result 페이지 확인</div><div class="value">${summary.crawledResultPages}</div></div>
+      <div class="card"><div class="label">결함 후보</div><div class="value">${summary.defects}</div></div>
+    </div>
+
+    <h2>검증 규칙</h2>
+    <div class="panel table-wrap">
+      <table><thead><tr><th>항목</th><th>규칙</th></tr></thead><tbody>${rules.map(([item, rule]) => `<tr><td class="nowrap">${escapeHtml(item)}</td><td>${escapeHtml(rule)}</td></tr>`).join("")}</tbody></table>
+    </div>
+
+    <h2>Standings 수집 범위</h2>
+    <div class="panel table-wrap">
+      ${standingsSourceSummary.length ? `<table><thead><tr><th>카테고리</th><th>선수</th></tr></thead><tbody>${standingsSourceSummary.map((item) => `<tr><td>${escapeHtml(item.category)}</td><td>${item.entries.map((entry) => `<span class="nowrap">#${escapeHtml(entry.rank ?? "-")} <a href="${escapeHtml(entry.url)}">${escapeHtml(entry.player)}</a></span>`).join("<br>")}</td></tr>`).join("")}</tbody></table>` : "<p>수집된 standings source 데이터가 없습니다.</p>"}
+    </div>
+
+    <h2>결함 후보</h2>
+    <div class="panel table-wrap">
+      ${defects.length ? `<table><thead><tr><th>유형</th><th>선수</th><th>항목</th><th>기대값</th><th>실제값</th><th>링크</th></tr></thead><tbody>${defects.map((row) => `<tr><td>${escapeHtml(formatKoreanDefectType(row.type))}</td><td>${escapeHtml(row.player)}</td><td>${escapeHtml(formatLabel(row.item))}</td><td>${escapeHtml(row.expected)}</td><td>${escapeHtml(row.actual)}</td><td>${row.url ? `<a href="${escapeHtml(row.url)}">열기</a>` : "-"}</td></tr>`).join("")}</tbody></table>` : "<p>결함 후보가 없습니다.</p>"}
+    </div>
+
+    <h2>선수별 상세</h2>
+    ${(report.players || []).map((player) => `<section class="player">
+      <h3>${escapeHtml(player.name)} <span class="pill ${player.status}">${escapeHtml(formatStatus(player.status))}</span></h3>
+      <p><a href="${escapeHtml(player.url)}">${escapeHtml(player.url)}</a></p>
+      <p class="small muted">Standings source: ${escapeHtml((player.standingsSources || []).map((source) => `${source.category} #${source.rank ?? "-"}`).join(", ") || "Manual player URL")}</p>
+      <p class="small muted">ALL 탭 수집 row: ${escapeHtml(player.events?.length ?? 0)} / 프로필 입상 수: ${escapeHtml(player.summary?.cashes ?? "-")} | Load more 클릭: ${escapeHtml(player.expansion?.loadMoreClicks ?? 0)} | 중단 사유: ${escapeHtml(player.expansion?.stoppedReason ?? "-")}</p>
+      ${(player.warnings || []).map((warning) => `<p><span class="pill warn">주의</span> ${escapeHtml(warning)}</p>`).join("")}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>통계</th><th>프로필 표시값</th><th>ALL 탭 계산값</th><th>상태</th></tr></thead>
+          <tbody>${(player.comparisons || []).map((item) => `<tr><td>${escapeHtml(formatLabel(item.label))}</td><td>${escapeHtml(formatValue(item.label, item.top))}</td><td>${escapeHtml(formatValue(item.label, item.calculated))}</td><td><span class="pill ${item.status}">${escapeHtml(formatStatus(item.status))}</span></td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>탭</th><th>클릭한 탭 라벨</th><th>프로필 표시값</th><th>표시 row 수</th><th>상태</th><th>상세</th></tr></thead>
+          <tbody>${(player.tabChecks || []).map((item) => `<tr><td>${escapeHtml(formatLabel(item.label))}</td><td>${escapeHtml(item.selectedTab || "-")}</td><td>${escapeHtml(formatValue(item.label, item.expected))}</td><td>${escapeHtml(formatValue(item.label, item.actual))}</td><td><span class="pill ${item.status}">${escapeHtml(formatStatus(item.status))}</span></td><td>${escapeHtml(item.detail || "")}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>시리즈 / 이벤트</th><th>일자</th><th>순위</th><th>상금</th><th>Result URL</th><th>Result 확인</th><th>최종 결과 확인 내용</th></tr></thead>
+          <tbody>${(player.events || []).slice(0, 100).map((event) => `<tr><td>${escapeHtml(event.eventName)}</td><td class="nowrap">${escapeHtml(event.date || "-")}</td><td class="nowrap">${escapeHtml(event.rankText || event.rank || "-")}</td><td class="nowrap">${escapeHtml(formatValue("Total Earnings", event.earnings))}</td><td>${event.resultPage?.url ? `<a href="${escapeHtml(event.resultPage.url)}">열기</a>` : event.resultUrl ? `<a href="${escapeHtml(event.resultUrl)}">열기</a>` : "-"}</td><td>${event.resultPage ? `<span class="pill ${event.resultPage.status}">${escapeHtml(formatStatus(event.resultPage.status))}</span>` : "-"}</td><td>${escapeHtml(formatKoreanResultFinding(event))}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </section>`).join("")}
+  </main>
+</body>
+</html>
+`;
+}
+
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -1208,8 +1362,11 @@ function runSelfTest() {
     status: "pass",
     detail: "Self-test tab check."
   }));
-  const html = renderHtml({ playersUrl: DEFAULT_PLAYERS_URL, players: [{ name: "Sample", url: "https://example.test/player", summary, events, expansion: {}, tabChecks, calculated, comparisons, defects: [], warnings: [], status: "pass" }] });
+  const sampleReport = { playersUrl: DEFAULT_PLAYERS_URL, players: [{ name: "Sample", url: "https://example.test/player", summary, events, expansion: {}, tabChecks, calculated, comparisons, defects: [], warnings: [], status: "pass" }] };
+  const html = renderHtml(sampleReport);
   if (!html.includes("WSOP Player Standings Crawler Report")) throw new Error("HTML render failed");
+  const koreanHtml = renderKoreanHtml(sampleReport);
+  if (!koreanHtml.includes("WSOP 선수 순위 크롤러 리포트")) throw new Error("Korean HTML render failed");
   console.log("Crawler self-test passed.");
 }
 
@@ -1295,10 +1452,13 @@ async function main() {
     writeJson(args.out, report);
     fs.mkdirSync(path.dirname(args.html), { recursive: true });
     fs.writeFileSync(args.html, renderHtml(report), "utf8");
+    const koreanHtml = koreanHtmlPath(args.html);
+    fs.writeFileSync(koreanHtml, renderKoreanHtml(report), "utf8");
     writeCsv(args.defects, flattenDefects(report));
 
     console.log(`Crawler JSON: ${args.out}`);
     console.log(`Crawler HTML: ${args.html}`);
+    console.log(`Crawler Korean HTML: ${koreanHtml}`);
     console.log(`Defect CSV: ${args.defects}`);
     console.log(`Overall: ${report.summary.status}`);
     if (report.summary.status !== "pass") process.exitCode = 1;

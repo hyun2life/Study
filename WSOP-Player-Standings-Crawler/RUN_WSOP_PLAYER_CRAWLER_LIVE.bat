@@ -7,6 +7,7 @@ if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%
 if not exist "automation\output" mkdir "automation\output"
 for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "RUN_ID=%%I"
 set "REPORT=automation\output\wsop-player-crawler-live-%RUN_ID%-report.html"
+set "KOREAN_REPORT=automation\output\wsop-player-crawler-live-%RUN_ID%-report-ko.html"
 
 rem Live QA controls. Lower these values only for quick smoke tests.
 rem PLAYER_LIMIT: players per standings category.
@@ -49,7 +50,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%CRAWLER_SCRIPT%" ^
 set EXIT_CODE=%ERRORLEVEL%
 
 echo.
-if exist "%REPORT%" (
+if exist "%KOREAN_REPORT%" (
+  echo Opening generated Korean live crawler report.
+  start "" "%KOREAN_REPORT%"
+) else if exist "%REPORT%" (
   echo Opening generated live crawler report.
   start "" "%REPORT%"
 ) else (
