@@ -2,7 +2,7 @@ param(
   [string]$PlayersUrl = "https://wsop-stage.ggnweb.com/players",
   [string[]]$PlayerUrl = @(),
   [int]$Limit = 10,
-  [int]$ResultLimit = 3,
+  [int]$ResultLimit = 0,
   [int]$MaxLoadMore = 50,
   [int]$ResultPageLimit = 30,
   [string]$OutputTag = "wsop-player-crawler",

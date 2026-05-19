@@ -25,7 +25,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%CRAWLER_SCRIPT%" ^
   -Headed ^
   -AuthWaitMs 300000 ^
   -Limit 10 ^
-  -ResultLimit 3
+  -ResultLimit 0
 set EXIT_CODE=%ERRORLEVEL%
 
 echo.
