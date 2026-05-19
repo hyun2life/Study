@@ -5,6 +5,8 @@ cd /d "%~dp0"
 
 if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
 if not exist "automation\output" mkdir "automation\output"
+for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "RUN_ID=%%I"
+set "REPORT=automation\output\wsop-player-crawler-stage-%RUN_ID%-report.html"
 
 echo ============================================
 echo WSOP Player Standings Crawler
@@ -14,13 +16,13 @@ echo Chrome will open. Log in to the stage site if needed.
 echo The crawler will collect profile and Result page data.
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "automation\run_player_standings_crawler.ps1" -Headed -AuthWaitMs 300000 -Limit 10 -ResultLimit 3
+powershell -NoProfile -ExecutionPolicy Bypass -File "automation\run_player_standings_crawler.ps1" -OutputTag "wsop-player-crawler-stage" -RunId "%RUN_ID%" -Headed -AuthWaitMs 300000 -Limit 10 -ResultLimit 3
 set EXIT_CODE=%ERRORLEVEL%
 
 echo.
-if exist "automation\output\wsop-player-crawler-report.html" (
+if exist "%REPORT%" (
   echo Opening generated crawler report.
-  start "" "automation\output\wsop-player-crawler-report.html"
+  start "" "%REPORT%"
 ) else (
   start "" "automation\output"
 )

@@ -5,12 +5,14 @@ param(
   [int]$ResultLimit = 3,
   [int]$MaxLoadMore = 50,
   [int]$ResultPageLimit = 30,
+  [string]$OutputTag = "wsop-player-crawler",
+  [string]$RunId = (Get-Date -Format "yyyyMMdd-HHmmss"),
   [string]$BrowserChannel = "chrome",
   [string]$UserDataDir = "automation\.auth\wsop-player-crawler",
   [int]$AuthWaitMs = 0,
-  [string]$Out = "automation\output\wsop-player-crawler-data.json",
-  [string]$HtmlReport = "automation\output\wsop-player-crawler-report.html",
-  [string]$DefectReport = "automation\output\wsop-player-crawler-defects.csv",
+  [string]$Out = "",
+  [string]$HtmlReport = "",
+  [string]$DefectReport = "",
   [switch]$Headed
 )
 
@@ -50,6 +52,30 @@ function Resolve-RequiredCommand {
 
 Push-Location (Join-Path $PSScriptRoot "..")
 try {
+  $safeOutputTag = ($OutputTag -replace '[^A-Za-z0-9._-]', '-').Trim('-')
+  $safeRunId = ($RunId -replace '[^A-Za-z0-9._-]', '-').Trim('-')
+  if (-not $safeOutputTag) {
+    $safeOutputTag = "wsop-player-crawler"
+  }
+  if (-not $safeRunId) {
+    $safeRunId = Get-Date -Format "yyyyMMdd-HHmmss"
+  }
+
+  if ([string]::IsNullOrWhiteSpace($Out)) {
+    $Out = "automation\output\$safeOutputTag-$safeRunId-data.json"
+  }
+  if ([string]::IsNullOrWhiteSpace($HtmlReport)) {
+    $HtmlReport = "automation\output\$safeOutputTag-$safeRunId-report.html"
+  }
+  if ([string]::IsNullOrWhiteSpace($DefectReport)) {
+    $DefectReport = "automation\output\$safeOutputTag-$safeRunId-defects.csv"
+  }
+
+  Write-Host "Output JSON: $Out"
+  Write-Host "HTML report: $HtmlReport"
+  Write-Host "Defect CSV: $DefectReport"
+  Write-Host ""
+
   foreach ($filePath in @($Out, $HtmlReport, $DefectReport)) {
     $parentPath = Split-Path -Parent $filePath
     if ($parentPath -and -not (Test-Path $parentPath)) {
