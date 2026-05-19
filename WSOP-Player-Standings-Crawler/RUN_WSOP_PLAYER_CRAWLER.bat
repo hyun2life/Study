@@ -16,7 +16,16 @@ echo Chrome will open. Log in to the stage site if needed.
 echo The crawler will collect profile and Result page data.
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "automation\run_player_standings_crawler.ps1" -OutputTag "wsop-player-crawler-stage" -RunId "%RUN_ID%" -Headed -AuthWaitMs 300000 -Limit 10 -ResultLimit 3
+set "CRAWLER_SCRIPT=automation\run_player_standings_crawler.ps1"
+set "OUTPUT_TAG=wsop-player-crawler-stage"
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CRAWLER_SCRIPT%" ^
+  -OutputTag "%OUTPUT_TAG%" ^
+  -RunId "%RUN_ID%" ^
+  -Headed ^
+  -AuthWaitMs 300000 ^
+  -Limit 10 ^
+  -ResultLimit 3
 set EXIT_CODE=%ERRORLEVEL%
 
 echo.

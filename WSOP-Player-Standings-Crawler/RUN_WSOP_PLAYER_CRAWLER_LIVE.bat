@@ -16,7 +16,18 @@ echo Target:
 echo   https://www.wsop.com/player-standings/
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "automation\run_player_standings_crawler.ps1" -PlayersUrl "https://www.wsop.com/player-standings/" -OutputTag "wsop-player-crawler-live" -RunId "%RUN_ID%" -Headed -AuthWaitMs 300000 -Limit 10 -ResultLimit 3
+set "CRAWLER_SCRIPT=automation\run_player_standings_crawler.ps1"
+set "PLAYERS_URL=https://www.wsop.com/player-standings/"
+set "OUTPUT_TAG=wsop-player-crawler-live"
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CRAWLER_SCRIPT%" ^
+  -PlayersUrl "%PLAYERS_URL%" ^
+  -OutputTag "%OUTPUT_TAG%" ^
+  -RunId "%RUN_ID%" ^
+  -Headed ^
+  -AuthWaitMs 300000 ^
+  -Limit 10 ^
+  -ResultLimit 3
 set EXIT_CODE=%ERRORLEVEL%
 
 echo.
