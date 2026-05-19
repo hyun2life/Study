@@ -3,6 +3,9 @@ setlocal
 
 cd /d "%~dp0"
 
+if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
+if not exist "automation\output" mkdir "automation\output"
+
 echo ============================================
 echo WSOP LIVE Player Standings Crawler
 echo ============================================

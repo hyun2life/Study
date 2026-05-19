@@ -19,6 +19,8 @@ function parseArgs(argv) {
     playerUrls: [],
     limit: 10,
     resultLimit: 3,
+    maxLoadMore: 50,
+    resultPageLimit: 30,
     timeout: 45000,
     browserChannel: process.platform === "win32" ? "chrome" : null,
     userDataDir: "automation/.auth/wsop-player-crawler",
@@ -38,6 +40,8 @@ function parseArgs(argv) {
     else if (arg === "--player-url") args.playerUrls.push(argv[++i]);
     else if (arg === "--limit") args.limit = Number(argv[++i]);
     else if (arg === "--result-limit") args.resultLimit = Number(argv[++i]);
+    else if (arg === "--max-load-more") args.maxLoadMore = Number(argv[++i]);
+    else if (arg === "--result-page-limit") args.resultPageLimit = Number(argv[++i]);
     else if (arg === "--timeout") args.timeout = Number(argv[++i]);
     else if (arg === "--browser-channel") {
       const value = argv[++i];
@@ -70,6 +74,8 @@ Options:
   --player-url <url>        Crawl a specific player URL. Can be repeated.
   --limit <n>               Number of players to collect from players page. Default: 10
   --result-limit <n>        Result pages to crawl per player. Default: 3
+  --max-load-more <n>       Max Load more clicks per player All tab. Default: 50
+  --result-page-limit <n>   Max Final Result pages to inspect per result. Default: 30
   --timeout <ms>            Page timeout. Default: 45000
   --browser-channel <name>  Installed browser channel, for example chrome. Use none for Playwright Chromium.
   --user-data-dir <path>    Reusable browser profile. Use none for a temporary profile.
@@ -84,6 +90,14 @@ Options:
 
 function normalizeText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeComparable(value) {
+  return normalizeText(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function escapeHtml(value) {
@@ -117,6 +131,7 @@ function parseMoney(value) {
 function parseRank(value) {
   const text = normalizeText(value);
   const patterns = [
+    /(?:^|\s)(\d{1,5})\s*\/\s*\d{1,6}(?:\s|$)/,
     /(?:^|\s)#\s*(\d{1,5})(?:st|nd|rd|th)?(?:\s|$)/i,
     /(?:^|\s)(\d{1,5})(?:st|nd|rd|th)(?:\s|$)/i,
     /(?:place|rank|finish|result)\D{0,12}(\d{1,5})/i,
@@ -129,6 +144,11 @@ function parseRank(value) {
   }
 
   return null;
+}
+
+function parseEntries(value) {
+  const match = normalizeText(value).match(/(?:^|\s)\d{1,5}\s*\/\s*(\d{1,6})(?:\s|$)/);
+  return match ? Number(match[1]) : null;
 }
 
 function parseSummary(bodyText) {
@@ -169,6 +189,10 @@ function normalizeEvent(row) {
     valueByHeader(row, [/rank/i, /place/i, /finish/i, /result/i]) ||
     row.cells.find((cell) => parseRank(cell) !== null) ||
     row.text;
+  const dateSource =
+    valueByHeader(row, [/date/i]) ||
+    row.cells.find((cell) => /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(cell)) ||
+    "";
   const earningSource =
     valueByHeader(row, [/earning/i, /prize/i, /winnings/i, /cash/i]) ||
     row.cells.find((cell) => /\$/.test(cell)) ||
@@ -181,7 +205,10 @@ function normalizeEvent(row) {
   return {
     rowIndex: row.rowIndex,
     eventName: normalizeText(eventSource),
+    date: normalizeText(dateSource),
+    rankText: normalizeText(rankSource),
     rank: parseRank(rankSource),
+    entries: parseEntries(rankSource),
     earnings: parseMoney(earningSource),
     resultUrl: row.resultUrl,
     hasResultControl: row.hasResultControl,
@@ -248,10 +275,10 @@ function buildDefects(player) {
       type: "Result page mismatch",
       player: player.name,
       item: event.eventName,
-      expected: "player/event/rank/earnings visible",
-      actual: result.error || result.missing.join(", "),
+      expected: `Final Result row: No ${event.rank ?? "-"}, ${player.name}, ${formatValue("Total Earnings", event.earnings)}`,
+      actual: result.error || (result.foundRow ? `Found No ${result.foundRow.no}, ${result.foundRow.player}, ${formatValue("Total Earnings", result.foundRow.earnings)}` : `Missing: ${result.missing.join(", ")}`),
       url: result.url || event.resultUrl || player.url,
-      detail: result.error || JSON.stringify(result.checks)
+      detail: result.error || JSON.stringify({ checks: result.checks, searchedPages: result.searchedPages, foundRow: result.foundRow })
     });
   }
 
@@ -333,10 +360,27 @@ async function collectPlayerUrls(page, playersUrl, limit, authWaitMs) {
   return urls;
 }
 
+function playerNameFromUrl(urlValue) {
+  try {
+    const url = new URL(urlValue);
+    const parts = url.pathname.split("/").filter(Boolean);
+    const slug = parts[1] || "";
+    if (!slug || /^\d+$/.test(slug)) return "";
+    return slug
+      .split("-")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  } catch {
+    return "";
+  }
+}
+
 async function extractPlayerName(page) {
-  const heading = await page.locator("h1, h2, [data-testid*=name i], [class*=name i]").first().innerText({ timeout: 3000 }).catch(() => "");
+  const headings = await page.locator("h1, h2, [data-testid*=name i], [class*=name i]").evaluateAll((nodes) => nodes.map((node) => node.textContent || "")).catch(() => []);
   const title = await page.title().catch(() => "");
-  return normalizeText(heading) || normalizeText(title) || page.url();
+  const heading = headings.map(normalizeText).find((value) => value && !/^player profile$/i.test(value));
+  return heading || playerNameFromUrl(page.url()) || normalizeText(title).replace(/\s*\|\s*WSOP\.com.*$/i, "") || page.url();
 }
 
 async function extractEventRows(page) {
@@ -392,20 +436,218 @@ async function extractEventRows(page) {
     return rows;
   });
 
-  return rawRows.map(normalizeEvent).filter((event) => event.rank !== null || event.earnings !== null || event.hasResultControl);
+  return rawRows
+    .map(normalizeEvent)
+    .filter((event) => {
+      const eventName = normalizeText(event.eventName);
+      const hasEventShape = event.cells.length >= 3 && eventName && !/^series\s*\/?\s*events?$/i.test(eventName);
+      return hasEventShape || event.rank !== null || event.earnings !== null || event.hasResultControl;
+    });
 }
 
-async function extractResultPageData(page, player, event) {
-  const body = normalizeText(await page.locator("body").innerText({ timeout: 10000 }));
-  const playerToken = player.name.split(/\s+/).find((token) => token.length >= 3) || player.name;
-  const eventTokens = event.eventName.split(/\s+/).filter((token) => token.length >= 4).slice(0, 3);
-  const checks = {
-    hasPlayer: playerToken ? body.toLowerCase().includes(playerToken.toLowerCase()) : true,
-    hasEvent: eventTokens.length === 0 || eventTokens.some((token) => body.toLowerCase().includes(token.toLowerCase())),
-    hasRank: event.rank === null || new RegExp(`(?:#\\s*)?${event.rank}(?:st|nd|rd|th)?\\b`, "i").test(body),
-    hasEarnings: event.earnings === null || body.includes(String(event.earnings)) || body.includes(`$${event.earnings.toLocaleString("en-US")}`)
+async function selectProfileTab(page, tabLabel) {
+  const selector = `button:has-text("${tabLabel}"), a:has-text("${tabLabel}"), [role=tab]:has-text("${tabLabel}")`;
+  const controls = page.locator(selector);
+  const count = await controls.count().catch(() => 0);
+  const exactPattern = new RegExp(`^\\s*${escapeRegExp(tabLabel)}\\s*$`, "i");
+
+  for (let i = 0; i < count; i += 1) {
+    const control = controls.nth(i);
+    const text = normalizeText(await control.innerText({ timeout: 1000 }).catch(() => ""));
+    if (!exactPattern.test(text)) continue;
+    if (!(await control.isVisible().catch(() => false))) continue;
+    await control.click({ timeout: 5000 }).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    return true;
+  }
+
+  return false;
+}
+
+async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
+  const expansion = {
+    tab: "ALL",
+    selectedAllTab: await selectProfileTab(page, "ALL"),
+    loadMoreClicks: 0,
+    expectedCashes,
+    reachedExpectedCashes: false,
+    stoppedReason: "not-started"
   };
-  const missing = Object.entries(checks).filter(([, ok]) => !ok).map(([key]) => key);
+
+  let events = await extractEventRows(page);
+  const expected = Number.isFinite(expectedCashes) && expectedCashes > 0 ? expectedCashes : null;
+
+  while (expansion.loadMoreClicks < maxLoadMore) {
+    if (expected && events.length >= expected) {
+      expansion.reachedExpectedCashes = true;
+      expansion.stoppedReason = "expected-cashes-reached";
+      break;
+    }
+
+    const loadMore = page
+      .locator("button:has-text('Load more'), a:has-text('Load more'), [role=button]:has-text('Load more')")
+      .last();
+    if (!(await loadMore.count().catch(() => 0)) || !(await loadMore.isVisible().catch(() => false))) {
+      expansion.stoppedReason = "load-more-not-found";
+      break;
+    }
+
+    const beforeCount = events.length;
+    await loadMore.click({ timeout: 10000 });
+    expansion.loadMoreClicks += 1;
+    await page.waitForFunction(
+      (count) => document.querySelectorAll("table tbody tr, table tr").length > count,
+      beforeCount,
+      { timeout: 5000 }
+    ).catch(() => {});
+    await page.waitForTimeout(500);
+    events = await extractEventRows(page);
+
+    if (events.length <= beforeCount) {
+      expansion.stoppedReason = "row-count-did-not-increase";
+      break;
+    }
+  }
+
+  if (expansion.stoppedReason === "not-started") {
+    expansion.stoppedReason = expansion.loadMoreClicks >= maxLoadMore ? "max-load-more-reached" : "complete";
+  }
+  if (expected && events.length >= expected) expansion.reachedExpectedCashes = true;
+  expansion.finalEventCount = events.length;
+  return { events, expansion };
+}
+
+async function extractFinalResultRows(page) {
+  return page.evaluate(() => {
+    const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const parseNumber = (value) => {
+      const match = normalize(value).match(/\d[\d,]*/);
+      return match ? Number(match[0].replace(/,/g, "")) : null;
+    };
+    const parseMoney = (value) => {
+      const match = normalize(value).match(/-?\d[\d,]*(?:\.\d+)?/);
+      return match ? Math.round(Number(match[0].replace(/[,\s]/g, ""))) : null;
+    };
+    const rows = [];
+
+    for (const table of Array.from(document.querySelectorAll("table"))) {
+      const headerText = normalize(table.querySelector("thead")?.textContent || table.textContent || "");
+      if (!/\bNo\b/i.test(headerText) || !/\bPlayer\b/i.test(headerText) || !/\bEarnings\b/i.test(headerText)) continue;
+
+      for (const row of Array.from(table.querySelectorAll("tbody tr"))) {
+        const cells = Array.from(row.querySelectorAll("td, th")).map((cell) => normalize(cell.textContent));
+        if (cells.length < 3) continue;
+        const no = parseNumber(cells[0]);
+        const earnings = parseMoney(cells[cells.length - 1]);
+        const player = cells[1] || "";
+        const country = cells.length >= 4 ? cells[cells.length - 2] : "";
+        if (no === null || !player) continue;
+        rows.push({ no, player, country, earnings, cells, rowText: normalize(row.textContent) });
+      }
+    }
+
+    return rows;
+  });
+}
+
+async function clickResultPageNumber(page, pageNumber) {
+  if (!pageNumber || pageNumber <= 1) return false;
+  const pattern = new RegExp(`^\\s*${pageNumber}\\s*$`);
+  const controls = page.locator("a, button, [role=button]").filter({ hasText: pattern });
+  const count = await controls.count().catch(() => 0);
+  for (let i = 0; i < count; i += 1) {
+    const control = controls.nth(i);
+    if (!(await control.isVisible().catch(() => false))) continue;
+    await control.click({ timeout: 5000 }).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
+    await page.waitForTimeout(700);
+    return true;
+  }
+  return false;
+}
+
+async function clickNextResultPage(page) {
+  const controls = page.locator("a, button, [role=button]").filter({ hasText: /^(next|>|›|»)\s*$/i });
+  const count = await controls.count().catch(() => 0);
+  for (let i = 0; i < count; i += 1) {
+    const control = controls.nth(i);
+    if (!(await control.isVisible().catch(() => false))) continue;
+    const disabled = await control.evaluate((element) => Boolean(element.disabled) || element.getAttribute("aria-disabled") === "true" || /disabled/i.test(element.className || "")).catch(() => false);
+    if (disabled) continue;
+    await control.click({ timeout: 5000 }).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
+    await page.waitForTimeout(700);
+    return true;
+  }
+  return false;
+}
+
+async function extractResultPageData(page, player, event, resultPageLimit) {
+  const targetName = normalizeComparable(player.name);
+  const targetRank = event.rank;
+  const targetEarnings = event.earnings;
+  const visitedUrls = new Set();
+  const searchedPages = [];
+  let foundRow = null;
+  let directPageClicked = false;
+  let lastBody = "";
+
+  if (targetRank && targetRank > 50) {
+    directPageClicked = await clickResultPageNumber(page, Math.ceil(targetRank / 50));
+  }
+
+  for (let pageIndex = 1; pageIndex <= resultPageLimit; pageIndex += 1) {
+    const url = page.url();
+    if (visitedUrls.has(url) && pageIndex > 1) break;
+    visitedUrls.add(url);
+
+    const rows = await extractFinalResultRows(page);
+    searchedPages.push({ pageIndex, url, rows: rows.length });
+    const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
+    foundRow = candidates.find((row) => {
+      const rowName = normalizeComparable(row.player);
+      const nameMatches = targetName ? rowName.includes(targetName) || targetName.includes(rowName) : true;
+      const earningsMatches = targetEarnings === null || targetEarnings === undefined || row.earnings === targetEarnings;
+      return nameMatches && earningsMatches;
+    }) || null;
+
+    if (!foundRow) {
+      lastBody = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
+      const escapedName = escapeRegExp(normalizeText(player.name));
+      const rankNameMatches = targetRank
+        ? new RegExp(`(?:^|\\s)${targetRank}\\s+${escapedName}\\b`, "i").test(lastBody)
+        : lastBody.toLowerCase().includes(normalizeText(player.name).toLowerCase());
+      const nameIndex = lastBody.toLowerCase().indexOf(normalizeText(player.name).toLowerCase());
+      const nearbyText = nameIndex >= 0 ? lastBody.slice(Math.max(0, nameIndex - 80), nameIndex + 260) : "";
+      const earningsMatches = targetEarnings === null || targetEarnings === undefined || nearbyText.includes(targetEarnings.toLocaleString("en-US"));
+      if (rankNameMatches && earningsMatches) {
+        foundRow = {
+          no: targetRank,
+          player: player.name,
+          country: "",
+          earnings: targetEarnings,
+          rowText: nearbyText,
+          source: "final-result-text"
+        };
+      }
+    }
+
+    if (foundRow) break;
+    if (!(await clickNextResultPage(page))) break;
+  }
+
+  const checks = {
+    hasFinalResultRows: searchedPages.some((item) => item.rows > 0) || Boolean(foundRow),
+    directPageClicked,
+    rankMatches: !targetRank || Boolean(foundRow && foundRow.no === targetRank),
+    playerMatches: Boolean(foundRow),
+    earningsMatches: targetEarnings === null || targetEarnings === undefined || Boolean(foundRow && foundRow.earnings === targetEarnings)
+  };
+  const missing = Object.entries(checks)
+    .filter(([key, ok]) => !ok && key !== "directPageClicked")
+    .map(([key]) => key);
+  const body = lastBody || normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
 
   return {
     url: page.url(),
@@ -413,17 +655,24 @@ async function extractResultPageData(page, player, event) {
     status: missing.length ? "fail" : "pass",
     checks,
     missing,
+    expectedRow: {
+      player: player.name,
+      no: targetRank,
+      earnings: targetEarnings
+    },
+    foundRow,
+    searchedPages,
     extractedTextSample: body.slice(0, 1000)
   };
 }
 
-async function crawlResultByUrl(context, player, event, timeout, authWaitMs) {
+async function crawlResultByUrl(context, player, event, timeout, authWaitMs, resultPageLimit) {
   const page = await context.newPage();
   try {
     await page.goto(event.resultUrl, { waitUntil: "domcontentloaded", timeout });
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
     await waitForAccessLogin(page, authWaitMs);
-    return await extractResultPageData(page, player, event);
+    return await extractResultPageData(page, player, event, resultPageLimit);
   } catch (error) {
     return { url: event.resultUrl, status: "fail", error: error.message, checks: {}, missing: ["pageError"] };
   } finally {
@@ -431,7 +680,7 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs) {
   }
 }
 
-async function crawlResultByClick(context, player, event, timeout, authWaitMs) {
+async function crawlResultByClick(context, player, event, timeout, authWaitMs, resultPageLimit) {
   const page = await context.newPage();
   try {
     await page.goto(player.url, { waitUntil: "domcontentloaded", timeout });
@@ -454,14 +703,14 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs) {
       await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
       await popup.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await waitForAccessLogin(popup, authWaitMs);
-      const result = await extractResultPageData(popup, player, event);
+      const result = await extractResultPageData(popup, player, event, resultPageLimit);
       await popup.close().catch(() => {});
       return result;
     }
 
     await navigationPromise;
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-    return await extractResultPageData(page, player, event);
+    return await extractResultPageData(page, player, event, resultPageLimit);
   } catch (error) {
     return { url: player.url, status: "fail", error: error.message, checks: {}, missing: ["clickError"] };
   } finally {
@@ -469,7 +718,7 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs) {
   }
 }
 
-async function crawlPlayer(context, url, timeout, resultLimit, authWaitMs) {
+async function crawlPlayer(context, url, timeout, resultLimit, authWaitMs, maxLoadMore, resultPageLimit) {
   const page = await context.newPage();
   const warnings = [];
   try {
@@ -480,15 +729,19 @@ async function crawlPlayer(context, url, timeout, resultLimit, authWaitMs) {
     const name = await extractPlayerName(page);
     const bodyText = await page.locator("body").innerText({ timeout });
     const summary = parseSummary(bodyText);
-    const events = await extractEventRows(page);
+    const { events, expansion } = await expandAllEventRows(page, summary.cashes, maxLoadMore);
 
     if (!events.length) warnings.push("No structured event rows were crawled.");
+    if (summary.cashes && events.length < summary.cashes) {
+      warnings.push(`Only ${events.length} ALL-tab rows were crawled, but profile Cashes shows ${summary.cashes}. Stop reason: ${expansion.stoppedReason}.`);
+    }
 
     const player = {
       name,
       url,
       summary,
       events,
+      expansion,
       calculated: calculateFromEvents(events),
       comparisons: [],
       warnings,
@@ -501,8 +754,8 @@ async function crawlPlayer(context, url, timeout, resultLimit, authWaitMs) {
     const resultEvents = events.filter((event) => event.resultUrl || event.hasResultControl).slice(0, resultLimit);
     for (const event of resultEvents) {
       event.resultPage = event.resultUrl
-        ? await crawlResultByUrl(context, player, event, timeout, authWaitMs)
-        : await crawlResultByClick(context, player, event, timeout, authWaitMs);
+        ? await crawlResultByUrl(context, player, event, timeout, authWaitMs, resultPageLimit)
+        : await crawlResultByClick(context, player, event, timeout, authWaitMs, resultPageLimit);
     }
 
     if (events.some((event) => event.hasResultControl && !event.resultUrl)) {
@@ -551,9 +804,27 @@ function summarize(report) {
   };
 }
 
+function formatResultFinding(event) {
+  const result = event.resultPage;
+  if (!result) return "Not checked";
+  if (result.error) return result.error;
+  if (result.foundRow) {
+    return `Found No ${result.foundRow.no}, ${result.foundRow.player}, ${formatValue("Total Earnings", result.foundRow.earnings)}`;
+  }
+  return `Missing: ${(result.missing || []).join(", ")}`;
+}
+
 function renderHtml(report) {
   const summary = summarize(report);
   const defects = flattenDefects(report);
+  const rules = [
+    ["Title", "Count ALL-tab events where Rank is 1."],
+    ["Bracelets", "Count Rank 1 events classified as WSOP bracelet events."],
+    ["Rings", "Count Rank 1 events classified as Circuit/Ring events."],
+    ["Final Tables", "Count ALL-tab events where Rank is 1 through 9."],
+    ["Cashes", "Count all rows in the ALL tab after Load more expansion."],
+    ["Result", "Open Results and find the matching Final Result row by No, Player, and Earnings."]
+  ];
 
   return `<!doctype html>
 <html lang="en">
@@ -561,50 +832,72 @@ function renderHtml(report) {
   <meta charset="utf-8">
   <title>WSOP Player Standings Crawler Report</title>
   <style>
-    body { margin: 28px; font-family: Arial, Helvetica, sans-serif; color: #17212b; background: #f7f8fa; }
+    body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #17212b; background: #f4f6f8; }
+    main { max-width: 1440px; margin: 0 auto; padding: 28px; }
     h1 { margin: 0; font-size: 28px; }
-    h2 { margin-top: 28px; font-size: 20px; }
-    h3 { margin: 0; font-size: 17px; }
+    h2 { margin: 30px 0 8px; font-size: 20px; }
+    h3 { margin: 0; font-size: 18px; }
+    p { line-height: 1.45; }
     a { color: #0b5cad; text-decoration: none; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; background: white; }
-    th, td { border-bottom: 1px solid #d9e0e7; padding: 8px; text-align: left; vertical-align: top; }
-    th { background: #263847; color: white; }
-    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 18px; }
-    .card, .player { background: white; border: 1px solid #d9e0e7; border-radius: 6px; padding: 12px; }
-    .player { margin-top: 14px; }
+    th, td { border-bottom: 1px solid #d9e0e7; padding: 9px; text-align: left; vertical-align: top; }
+    th { background: #263847; color: white; position: sticky; top: 0; }
+    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 18px; }
+    .card, .player, .panel { background: white; border: 1px solid #d9e0e7; border-radius: 6px; padding: 14px; }
+    .player { margin-top: 16px; }
     .label { color: #667789; font-size: 12px; }
     .value { font-size: 23px; font-weight: 700; margin-top: 5px; }
+    .muted { color: #667789; }
     .pill { display: inline-block; min-width: 44px; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; text-align: center; text-transform: uppercase; }
     .pass { background: #e3f7eb; color: #116b37; }
     .fail { background: #fde8e8; color: #b42318; }
+    .warn { background: #fff4d6; color: #8a5a00; }
+    .table-wrap { overflow-x: auto; }
+    .small { font-size: 12px; }
+    .nowrap { white-space: nowrap; }
   </style>
 </head>
 <body>
-  <h1>WSOP Player Standings Crawler Report</h1>
-  <p>Generated: ${escapeHtml(new Date().toISOString())}</p>
-  <p>Source: ${escapeHtml(report.playersUrl || "")}</p>
-  <span class="pill ${summary.status}">${escapeHtml(summary.status)}</span>
-  <div class="summary">
-    <div class="card"><div class="label">Players</div><div class="value">${summary.checkedPlayers}</div></div>
-    <div class="card"><div class="label">Events</div><div class="value">${summary.crawledEvents}</div></div>
-    <div class="card"><div class="label">Result Pages</div><div class="value">${summary.crawledResultPages}</div></div>
-    <div class="card"><div class="label">Defects</div><div class="value">${summary.defects}</div></div>
-  </div>
-  <h2>Defect Candidates</h2>
-  ${defects.length ? `<table><thead><tr><th>Type</th><th>Player</th><th>Item</th><th>Expected</th><th>Actual</th><th>Link</th></tr></thead><tbody>${defects.map((row) => `<tr><td>${escapeHtml(row.type)}</td><td>${escapeHtml(row.player)}</td><td>${escapeHtml(row.item)}</td><td>${escapeHtml(row.expected)}</td><td>${escapeHtml(row.actual)}</td><td>${row.url ? `<a href="${escapeHtml(row.url)}">Open</a>` : "-"}</td></tr>`).join("")}</tbody></table>` : "<p>No defect candidates.</p>"}
-  <h2>Players</h2>
-  ${(report.players || []).map((player) => `<section class="player">
-    <h3>${escapeHtml(player.name)} <span class="pill ${player.status}">${escapeHtml(player.status)}</span></h3>
-    <p><a href="${escapeHtml(player.url)}">${escapeHtml(player.url)}</a></p>
-    <table>
-      <thead><tr><th>Item</th><th>Top</th><th>Crawled Calculation</th><th>Status</th></tr></thead>
-      <tbody>${(player.comparisons || []).map((item) => `<tr><td>${escapeHtml(item.label)}</td><td>${escapeHtml(formatValue(item.label, item.top))}</td><td>${escapeHtml(formatValue(item.label, item.calculated))}</td><td><span class="pill ${item.status}">${escapeHtml(item.status)}</span></td></tr>`).join("")}</tbody>
-    </table>
-    <table>
-      <thead><tr><th>Event</th><th>Rank</th><th>Earnings</th><th>Result URL</th><th>Result Status</th></tr></thead>
-      <tbody>${(player.events || []).slice(0, 50).map((event) => `<tr><td>${escapeHtml(event.eventName)}</td><td>${escapeHtml(event.rank ?? "-")}</td><td>${escapeHtml(formatValue("Total Earnings", event.earnings))}</td><td>${event.resultPage?.url ? `<a href="${escapeHtml(event.resultPage.url)}">Open</a>` : event.resultUrl ? `<a href="${escapeHtml(event.resultUrl)}">Open</a>` : "-"}</td><td>${event.resultPage ? `<span class="pill ${event.resultPage.status}">${escapeHtml(event.resultPage.status)}</span>` : "-"}</td></tr>`).join("")}</tbody>
-    </table>
-  </section>`).join("")}
+  <main>
+    <h1>WSOP Player Standings Crawler Report <span class="pill ${summary.status}">${escapeHtml(summary.status)}</span></h1>
+    <p class="muted">Generated: ${escapeHtml(new Date().toISOString())} | Source: <a href="${escapeHtml(report.playersUrl || "")}">${escapeHtml(report.playersUrl || "")}</a></p>
+    <div class="summary">
+      <div class="card"><div class="label">Players Checked</div><div class="value">${summary.checkedPlayers}</div></div>
+      <div class="card"><div class="label">ALL Events Crawled</div><div class="value">${summary.crawledEvents}</div></div>
+      <div class="card"><div class="label">Result Pages Checked</div><div class="value">${summary.crawledResultPages}</div></div>
+      <div class="card"><div class="label">Defect Candidates</div><div class="value">${summary.defects}</div></div>
+    </div>
+
+    <h2>Validation Rules</h2>
+    <div class="panel table-wrap">
+      <table><thead><tr><th>Item</th><th>Rule</th></tr></thead><tbody>${rules.map(([item, rule]) => `<tr><td class="nowrap">${escapeHtml(item)}</td><td>${escapeHtml(rule)}</td></tr>`).join("")}</tbody></table>
+    </div>
+
+    <h2>Defect Candidates</h2>
+    <div class="panel table-wrap">
+      ${defects.length ? `<table><thead><tr><th>Type</th><th>Player</th><th>Item</th><th>Expected</th><th>Actual</th><th>Link</th></tr></thead><tbody>${defects.map((row) => `<tr><td>${escapeHtml(row.type)}</td><td>${escapeHtml(row.player)}</td><td>${escapeHtml(row.item)}</td><td>${escapeHtml(row.expected)}</td><td>${escapeHtml(row.actual)}</td><td>${row.url ? `<a href="${escapeHtml(row.url)}">Open</a>` : "-"}</td></tr>`).join("")}</tbody></table>` : "<p>No defect candidates.</p>"}
+    </div>
+
+    <h2>Players</h2>
+    ${(report.players || []).map((player) => `<section class="player">
+      <h3>${escapeHtml(player.name)} <span class="pill ${player.status}">${escapeHtml(player.status)}</span></h3>
+      <p><a href="${escapeHtml(player.url)}">${escapeHtml(player.url)}</a></p>
+      <p class="small muted">ALL tab rows crawled: ${escapeHtml(player.events?.length ?? 0)} / Cashes stat: ${escapeHtml(player.summary?.cashes ?? "-")} | Load more clicks: ${escapeHtml(player.expansion?.loadMoreClicks ?? 0)} | Stop reason: ${escapeHtml(player.expansion?.stoppedReason ?? "-")}</p>
+      ${(player.warnings || []).map((warning) => `<p><span class="pill warn">warn</span> ${escapeHtml(warning)}</p>`).join("")}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Stat</th><th>Profile Stat</th><th>Calculated From ALL Tab</th><th>Status</th></tr></thead>
+          <tbody>${(player.comparisons || []).map((item) => `<tr><td>${escapeHtml(item.label)}</td><td>${escapeHtml(formatValue(item.label, item.top))}</td><td>${escapeHtml(formatValue(item.label, item.calculated))}</td><td><span class="pill ${item.status}">${escapeHtml(item.status)}</span></td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Series / Event</th><th>Date</th><th>Rank</th><th>Earnings</th><th>Result URL</th><th>Result Check</th><th>Final Result Finding</th></tr></thead>
+          <tbody>${(player.events || []).slice(0, 100).map((event) => `<tr><td>${escapeHtml(event.eventName)}</td><td class="nowrap">${escapeHtml(event.date || "-")}</td><td class="nowrap">${escapeHtml(event.rankText || event.rank || "-")}</td><td class="nowrap">${escapeHtml(formatValue("Total Earnings", event.earnings))}</td><td>${event.resultPage?.url ? `<a href="${escapeHtml(event.resultPage.url)}">Open</a>` : event.resultUrl ? `<a href="${escapeHtml(event.resultUrl)}">Open</a>` : "-"}</td><td>${event.resultPage ? `<span class="pill ${event.resultPage.status}">${escapeHtml(event.resultPage.status)}</span>` : "-"}</td><td>${escapeHtml(formatResultFinding(event))}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </section>`).join("")}
+  </main>
 </body>
 </html>
 `;
@@ -681,7 +974,7 @@ async function main() {
     const players = [];
     for (const [index, playerUrl] of playerUrls.entries()) {
       console.log(`[${index + 1}/${playerUrls.length}] Crawling ${playerUrl}`);
-      players.push(await crawlPlayer(context, playerUrl, args.timeout, args.resultLimit, authWaitMs));
+      players.push(await crawlPlayer(context, playerUrl, args.timeout, args.resultLimit, authWaitMs, args.maxLoadMore, args.resultPageLimit));
     }
 
     const report = {
