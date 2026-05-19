@@ -63,6 +63,16 @@ set "MAX_LOAD_MORE=50"
 set "RESULT_PAGE_LIMIT=30"
 ```
 
+## 검증 범위
+
+크롤러는 선수별로 아래 항목을 검증합니다.
+
+- ALL 탭을 펼쳐서 상단 요약값과 계산값을 비교합니다.
+- Title, Bracelets, Rings, Final Tables 탭을 각각 눌러서 현재 표시된 row 수가 상단 요약값과 같은지 비교합니다.
+- 각 이벤트의 Result 페이지를 열어 최종 결과표에서 선수명, 순위, 상금이 맞는지 확인합니다.
+
+다른 탭들은 일반적으로 row 수가 많지 않기 때문에 `Load more`를 반복하지 않고, 탭 클릭 직후 표시된 row 수를 기준으로 빠르게 검증합니다. ALL 탭은 `Cashes`와 `Total Earnings` 계산에 필요하므로 `MAX_LOAD_MORE` 설정에 따라 더 많이 펼칩니다.
+
 ## 출력물
 
 결과 파일은 `automation\output` 아래에 생성됩니다.

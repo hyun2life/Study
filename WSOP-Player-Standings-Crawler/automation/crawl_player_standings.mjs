@@ -21,6 +21,13 @@ const STANDINGS_CATEGORIES = [
   { label: "All-Time Rings", path: "all-time-rings" }
 ];
 
+const PROFILE_TAB_CHECKS = [
+  { key: "titles", label: "Title", summaryKey: "titles", tabLabels: ["TITLES", "TITLE"] },
+  { key: "bracelets", label: "Bracelets", summaryKey: "bracelets", tabLabels: ["BRACELETS", "BRACELET"] },
+  { key: "rings", label: "Rings", summaryKey: "rings", tabLabels: ["RINGS", "RING"] },
+  { key: "finalTables", label: "Final Tables", summaryKey: "finalTables", tabLabels: ["FINAL TABLES", "FINAL TABLE"] }
+];
+
 function parseArgs(argv) {
   const args = {
     playersUrl: DEFAULT_PLAYERS_URL,
@@ -275,6 +282,19 @@ function buildDefects(player) {
       actual: formatValue(comparison.label, comparison.calculated),
       url: player.url,
       detail: `${comparison.label}: top=${formatValue(comparison.label, comparison.top)}, calculated=${formatValue(comparison.label, comparison.calculated)}`
+    });
+  }
+
+  for (const tabCheck of player.tabChecks || []) {
+    if (tabCheck.status !== "fail") continue;
+    defects.push({
+      type: "Profile tab count mismatch",
+      player: player.name,
+      item: tabCheck.label,
+      expected: formatValue(tabCheck.label, tabCheck.expected),
+      actual: tabCheck.selectedTab ? formatValue(tabCheck.label, tabCheck.actual) : "Tab not found",
+      url: player.url,
+      detail: tabCheck.detail
     });
   }
 
@@ -651,6 +671,46 @@ async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
   return { events, expansion };
 }
 
+async function collectProfileTabChecks(page, summary) {
+  const checks = [];
+
+  for (const tabCheck of PROFILE_TAB_CHECKS) {
+    const expected = summary?.[tabCheck.summaryKey];
+    const check = {
+      key: tabCheck.key,
+      label: tabCheck.label,
+      expected,
+      actual: null,
+      selectedTab: null,
+      status: "warn",
+      detail: ""
+    };
+
+    for (const tabLabel of tabCheck.tabLabels) {
+      if (await selectProfileTab(page, tabLabel)) {
+        check.selectedTab = tabLabel;
+        break;
+      }
+    }
+
+    if (!check.selectedTab) {
+      check.status = Number.isFinite(expected) && expected > 0 ? "fail" : "warn";
+      check.detail = `Profile tab not found. Tried: ${tabCheck.tabLabels.join(", ")}.`;
+      checks.push(check);
+      continue;
+    }
+
+    const tabEvents = await extractEventRows(page);
+    check.actual = tabEvents.length;
+    check.status = Number.isFinite(expected) && expected === check.actual ? "pass" : "fail";
+    check.detail = `${check.selectedTab} tab rows=${check.actual}, profile ${tabCheck.label}=${expected ?? "-"}.`;
+    checks.push(check);
+  }
+
+  await selectProfileTab(page, "ALL").catch(() => {});
+  return checks;
+}
+
 async function extractFinalResultRows(page) {
   return page.evaluate(() => {
     const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -863,10 +923,14 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     const bodyText = await page.locator("body").innerText({ timeout });
     const summary = parseSummary(bodyText);
     const { events, expansion } = await expandAllEventRows(page, summary.cashes, maxLoadMore);
+    const tabChecks = await collectProfileTabChecks(page, summary);
 
     if (!events.length) warnings.push("No structured event rows were crawled.");
     if (summary.cashes && events.length < summary.cashes) {
       warnings.push(`Only ${events.length} ALL-tab rows were crawled, but profile Cashes shows ${summary.cashes}. Stop reason: ${expansion.stoppedReason}.`);
+    }
+    for (const tabCheck of tabChecks) {
+      if (tabCheck.status === "warn") warnings.push(tabCheck.detail);
     }
 
     const player = {
@@ -876,6 +940,7 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
       summary,
       events,
       expansion,
+      tabChecks,
       calculated: calculateFromEvents(events),
       comparisons: [],
       warnings,
@@ -947,6 +1012,7 @@ function summarize(report) {
   const defects = flattenDefects(report);
   const events = players.flatMap((player) => player.events || []);
   const resultPages = events.filter((event) => event.resultPage);
+  const tabChecks = players.flatMap((player) => player.tabChecks || []);
   const standingsCategories = new Set(players.flatMap((player) => (player.standingsSources || []).map((source) => source.category)));
   return {
     status: defects.length ? "fail" : "pass",
@@ -955,6 +1021,8 @@ function summarize(report) {
     passedPlayers: players.filter((player) => player.status === "pass").length,
     failedPlayers: players.filter((player) => player.status !== "pass").length,
     crawledEvents: events.length,
+    tabChecks: tabChecks.length,
+    failedTabChecks: tabChecks.filter((check) => check.status === "fail").length,
     crawledResultPages: resultPages.length,
     failedResultPages: resultPages.filter((event) => event.resultPage.status !== "pass").length,
     defects: defects.length
@@ -1000,6 +1068,7 @@ function renderHtml(report) {
     ["Rings", "Count Rank 1 events classified as Circuit/Ring events."],
     ["Final Tables", "Count ALL-tab events where Rank is 1 through 9."],
     ["Cashes", "Count all rows in the ALL tab after Load more expansion."],
+    ["Profile tabs", "Click Title, Bracelets, Rings, and Final Tables tabs and compare visible row counts with profile stats."],
     ["Result", "Open Results and find the matching Final Result row by No, Player, and Earnings."]
   ];
 
@@ -1042,6 +1111,7 @@ function renderHtml(report) {
       <div class="card"><div class="label">Standings Categories</div><div class="value">${summary.checkedStandingsCategories}</div></div>
       <div class="card"><div class="label">Players Checked</div><div class="value">${summary.checkedPlayers}</div></div>
       <div class="card"><div class="label">ALL Events Crawled</div><div class="value">${summary.crawledEvents}</div></div>
+      <div class="card"><div class="label">Profile Tab Checks</div><div class="value">${summary.tabChecks}</div></div>
       <div class="card"><div class="label">Result Pages Checked</div><div class="value">${summary.crawledResultPages}</div></div>
       <div class="card"><div class="label">Defect Candidates</div><div class="value">${summary.defects}</div></div>
     </div>
@@ -1072,6 +1142,12 @@ function renderHtml(report) {
         <table>
           <thead><tr><th>Stat</th><th>Profile Stat</th><th>Calculated From ALL Tab</th><th>Status</th></tr></thead>
           <tbody>${(player.comparisons || []).map((item) => `<tr><td>${escapeHtml(item.label)}</td><td>${escapeHtml(formatValue(item.label, item.top))}</td><td>${escapeHtml(formatValue(item.label, item.calculated))}</td><td><span class="pill ${item.status}">${escapeHtml(item.status)}</span></td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tab</th><th>Selected Label</th><th>Profile Stat</th><th>Visible Rows</th><th>Status</th><th>Detail</th></tr></thead>
+          <tbody>${(player.tabChecks || []).map((item) => `<tr><td>${escapeHtml(item.label)}</td><td>${escapeHtml(item.selectedTab || "-")}</td><td>${escapeHtml(formatValue(item.label, item.expected))}</td><td>${escapeHtml(formatValue(item.label, item.actual))}</td><td><span class="pill ${item.status}">${escapeHtml(item.status)}</span></td><td>${escapeHtml(item.detail || "")}</td></tr>`).join("")}</tbody>
         </table>
       </div>
       <div class="table-wrap">
@@ -1123,7 +1199,16 @@ function runSelfTest() {
   if (comparisons.some((item) => item.status !== "pass")) {
     throw new Error(`Self-test comparison failed: ${JSON.stringify(comparisons)}`);
   }
-  const html = renderHtml({ playersUrl: DEFAULT_PLAYERS_URL, players: [{ name: "Sample", url: "https://example.test/player", summary, events, calculated, comparisons, defects: [], warnings: [], status: "pass" }] });
+  const tabChecks = PROFILE_TAB_CHECKS.map((check) => ({
+    key: check.key,
+    label: check.label,
+    expected: summary[check.summaryKey],
+    actual: summary[check.summaryKey],
+    selectedTab: check.tabLabels[0],
+    status: "pass",
+    detail: "Self-test tab check."
+  }));
+  const html = renderHtml({ playersUrl: DEFAULT_PLAYERS_URL, players: [{ name: "Sample", url: "https://example.test/player", summary, events, expansion: {}, tabChecks, calculated, comparisons, defects: [], warnings: [], status: "pass" }] });
   if (!html.includes("WSOP Player Standings Crawler Report")) throw new Error("HTML render failed");
   console.log("Crawler self-test passed.");
 }
