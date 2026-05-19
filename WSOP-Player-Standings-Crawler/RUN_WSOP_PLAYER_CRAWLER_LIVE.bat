@@ -8,6 +8,18 @@ if not exist "automation\output" mkdir "automation\output"
 for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "RUN_ID=%%I"
 set "REPORT=automation\output\wsop-player-crawler-live-%RUN_ID%-report.html"
 
+rem Sample controls. Change these values for faster test runs.
+rem PLAYER_LIMIT: players per standings category.
+rem RESULT_LIMIT: Result pages per player. 0 checks every Result.
+rem RESULT_RANK_LIMIT: skip Result checks when rank is above this. 0 means no rank cap.
+rem MAX_LOAD_MORE: profile ALL-tab Load more clicks.
+rem RESULT_PAGE_LIMIT: Final Result pages to inspect per Result.
+set "PLAYER_LIMIT=10"
+set "RESULT_LIMIT=0"
+set "RESULT_RANK_LIMIT=0"
+set "MAX_LOAD_MORE=50"
+set "RESULT_PAGE_LIMIT=30"
+
 echo ============================================
 echo WSOP LIVE Player Standings Crawler
 echo ============================================
@@ -26,8 +38,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%CRAWLER_SCRIPT%" ^
   -RunId "%RUN_ID%" ^
   -Headed ^
   -AuthWaitMs 300000 ^
-  -Limit 10 ^
-  -ResultLimit 0
+  -Limit %PLAYER_LIMIT% ^
+  -ResultLimit %RESULT_LIMIT% ^
+  -ResultRankLimit %RESULT_RANK_LIMIT% ^
+  -MaxLoadMore %MAX_LOAD_MORE% ^
+  -ResultPageLimit %RESULT_PAGE_LIMIT%
 set EXIT_CODE=%ERRORLEVEL%
 
 echo.

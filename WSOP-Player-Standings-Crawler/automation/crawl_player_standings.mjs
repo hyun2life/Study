@@ -27,6 +27,7 @@ function parseArgs(argv) {
     playerUrls: [],
     limit: 10,
     resultLimit: 0,
+    resultRankLimit: 0,
     maxLoadMore: 50,
     resultPageLimit: 30,
     timeout: 45000,
@@ -48,6 +49,7 @@ function parseArgs(argv) {
     else if (arg === "--player-url") args.playerUrls.push(argv[++i]);
     else if (arg === "--limit") args.limit = Number(argv[++i]);
     else if (arg === "--result-limit") args.resultLimit = Number(argv[++i]);
+    else if (arg === "--result-rank-limit") args.resultRankLimit = Number(argv[++i]);
     else if (arg === "--max-load-more") args.maxLoadMore = Number(argv[++i]);
     else if (arg === "--result-page-limit") args.resultPageLimit = Number(argv[++i]);
     else if (arg === "--timeout") args.timeout = Number(argv[++i]);
@@ -82,6 +84,7 @@ Options:
   --player-url <url>        Crawl a specific player URL. Can be repeated.
   --limit <n>               Number of players to collect per standings category. Default: 10
   --result-limit <n>        Result pages to crawl per player. Use 0 for every Result. Default: 0
+  --result-rank-limit <n>   Skip Result checks when player rank is above this value. Use 0 for no rank cap. Default: 0
   --max-load-more <n>       Max Load more clicks per player All tab. Default: 50
   --result-page-limit <n>   Max Final Result pages to inspect per result. Default: 30
   --timeout <ms>            Page timeout. Default: 45000
@@ -848,7 +851,7 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs, r
   }
 }
 
-async function crawlPlayer(context, url, timeout, resultLimit, authWaitMs, maxLoadMore, resultPageLimit, standingsSources = []) {
+async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, authWaitMs, maxLoadMore, resultPageLimit, standingsSources = []) {
   const page = await context.newPage();
   const warnings = [];
   try {
@@ -883,8 +886,20 @@ async function crawlPlayer(context, url, timeout, resultLimit, authWaitMs, maxLo
     player.comparisons = compareSummary(player.summary, player.calculated);
 
     const checkableResultEvents = events.filter((event) => event.resultUrl || event.hasResultControl);
-    const resultEvents = resultLimit > 0 ? checkableResultEvents.slice(0, resultLimit) : checkableResultEvents;
-    const resultEventsToSkip = resultLimit > 0 ? checkableResultEvents.slice(resultLimit) : [];
+    const rankEligibleResultEvents = [];
+    const rankSkippedResultEvents = [];
+
+    for (const event of checkableResultEvents) {
+      if (resultRankLimit > 0 && event.rank !== null && event.rank > resultRankLimit) {
+        event.resultSkipped = `Skipped because ResultRankLimit is ${resultRankLimit} and rank is ${event.rank}.`;
+        rankSkippedResultEvents.push(event);
+      } else {
+        rankEligibleResultEvents.push(event);
+      }
+    }
+
+    const resultEvents = resultLimit > 0 ? rankEligibleResultEvents.slice(0, resultLimit) : rankEligibleResultEvents;
+    const resultEventsToSkip = resultLimit > 0 ? rankEligibleResultEvents.slice(resultLimit) : [];
     for (const event of resultEvents) {
       event.resultPage = event.resultUrl
         ? await crawlResultByUrl(context, player, event, timeout, authWaitMs, resultPageLimit)
@@ -892,6 +907,9 @@ async function crawlPlayer(context, url, timeout, resultLimit, authWaitMs, maxLo
     }
     for (const event of resultEventsToSkip) {
       event.resultSkipped = `Skipped because ResultLimit is ${resultLimit}.`;
+    }
+    if (rankSkippedResultEvents.length) {
+      warnings.push(`${rankSkippedResultEvents.length} Result checks were skipped because ResultRankLimit is ${resultRankLimit}.`);
     }
 
     if (events.some((event) => event.hasResultControl && !event.resultUrl)) {
@@ -1081,6 +1099,11 @@ function writeCsv(filePath, rows) {
 }
 
 function runSelfTest() {
+  const parsedArgs = parseArgs(["--result-rank-limit", "50"]);
+  if (parsedArgs.resultRankLimit !== 50) {
+    throw new Error("Result rank limit argument parsing failed");
+  }
+
   if (cleanPlayerName("Kristen FoxenKristen Foxen", "https://www.wsop.com/players/kristen-foxen/") !== "Kristen Foxen") {
     throw new Error("Repeated player name cleanup failed");
   }
@@ -1150,7 +1173,7 @@ async function main() {
     const players = [];
     for (const [index, entry] of playerEntries.entries()) {
       console.log(`[${index + 1}/${playerEntries.length}] Crawling ${entry.url}`);
-      players.push(await crawlPlayer(context, entry.url, args.timeout, args.resultLimit, authWaitMs, args.maxLoadMore, args.resultPageLimit, entry.standingsSources));
+      players.push(await crawlPlayer(context, entry.url, args.timeout, args.resultLimit, args.resultRankLimit, authWaitMs, args.maxLoadMore, args.resultPageLimit, entry.standingsSources));
     }
 
     const report = {
