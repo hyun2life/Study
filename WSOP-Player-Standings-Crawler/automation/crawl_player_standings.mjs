@@ -31,8 +31,8 @@ function parseArgs(argv) {
     maxLoadMore: 50,
     resultPageLimit: 30,
     timeout: 45000,
-    browserChannel: process.platform === "win32" ? "chrome" : null,
-    userDataDir: "automation/.auth/wsop-player-crawler",
+    browserChannel: null,
+    userDataDir: "automation/.auth/wsop-player-crawler-chromium",
     authWaitMs: null,
     headed: false,
     out: "automation/output/wsop-player-crawler-data.json",
@@ -1147,13 +1147,34 @@ async function main() {
   let browser = null;
   let context = null;
 
-  if (args.userDataDir) {
-    fs.mkdirSync(args.userDataDir, { recursive: true });
-    context = await chromium.launchPersistentContext(args.userDataDir, launchOptions);
-    browser = context.browser();
-  } else {
-    browser = await chromium.launch(launchOptions);
-    context = await browser.newContext();
+  try {
+    if (args.userDataDir) {
+      fs.mkdirSync(args.userDataDir, { recursive: true });
+      context = await chromium.launchPersistentContext(args.userDataDir, launchOptions);
+      browser = context.browser();
+    } else {
+      browser = await chromium.launch(launchOptions);
+      context = await browser.newContext();
+    }
+  } catch (error) {
+    if (!args.browserChannel) {
+      if (/Executable doesn't exist|Please run the following command|install/i.test(error.message)) {
+        console.error("Playwright Chromium is not installed. Run the BAT/PowerShell wrapper, or run: node node_modules/playwright/cli.js install chromium");
+      }
+      throw error;
+    }
+
+    console.warn(`Could not launch browser channel "${args.browserChannel}": ${error.message}`);
+    console.warn("Retrying with Playwright Chromium.");
+    delete launchOptions.channel;
+
+    if (args.userDataDir) {
+      context = await chromium.launchPersistentContext(args.userDataDir, launchOptions);
+      browser = context.browser();
+    } else {
+      browser = await chromium.launch(launchOptions);
+      context = await browser.newContext();
+    }
   }
 
   try {
@@ -1203,6 +1224,10 @@ async function main() {
 }
 
 main().catch((error) => {
+  if (/Target page, context or browser has been closed/i.test(error.message)) {
+    console.error("The browser closed before the crawler finished. Keep the browser window open until the report is generated, and rerun the BAT file.");
+    console.error("If this happens without closing the browser manually, rerun after the wrapper installs Playwright Chromium or pass --browser-channel none.");
+  }
   console.error(error);
   process.exitCode = 1;
 });

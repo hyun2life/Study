@@ -24,7 +24,8 @@ echo ============================================
 echo WSOP Player Standings Crawler
 echo ============================================
 echo.
-echo Chrome will open. Log in to the stage site if needed.
+echo First run may install Node.js, npm packages, and Playwright Chromium.
+echo A browser will open. Log in to the stage site if needed.
 echo The crawler will collect profile and Result page data.
 echo.
 
