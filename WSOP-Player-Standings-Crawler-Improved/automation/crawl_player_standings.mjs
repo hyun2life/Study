@@ -32,6 +32,7 @@ const DEFAULT_CONCURRENCY = 5;
 const MAX_CONCURRENCY = 10;
 const DEFAULT_RESULT_PAGE_LIMIT = 0;
 const DISABLED_RESULT_MODES = new Set(["skip", "fail", "check"]);
+const RESULT_SEARCH_LOOKBEHIND_PAGES = 2;
 
 // 결과 페이지 캐시 (url -> cachedPages 배열)
 // cachedPages: Array<{ pageIndex, url, title, rows, bodyText }>
@@ -397,6 +398,21 @@ function calculateFromEvents(events) {
     cashes: events.length,
     totalEarnings: events.reduce((sum, event) => sum + (event.earnings || 0), 0)
   };
+}
+
+function subtractSummaryValues(summary, adjustment) {
+  const adjusted = { ...(summary || {}) };
+  for (const stat of STAT_DEFS) {
+    const base = adjusted[stat.key];
+    if (base === null || base === undefined) continue;
+    adjusted[stat.key] = Math.max(0, base - (adjustment?.[stat.key] || 0));
+  }
+  return adjusted;
+}
+
+function profileSummaryForComparison(summary, skippedEvents) {
+  if (!skippedEvents?.length) return summary;
+  return subtractSummaryValues(summary, calculateFromEvents(skippedEvents));
 }
 
 function compareSummary(summary, calculated) {
@@ -923,7 +939,53 @@ async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
   return { events, expansion };
 }
 
-async function collectProfileTabChecks(page, summary) {
+async function expandCurrentProfileTabRows(page, expectedRows, maxLoadMore) {
+  let events = await extractEventRows(page);
+  const expected = Number.isFinite(expectedRows) && expectedRows > 0 ? expectedRows : null;
+  const expansion = {
+    loadMoreClicks: 0,
+    reachedExpectedRows: false,
+    stoppedReason: expected ? "not-started" : "no-expected-count"
+  };
+  let stalledClicks = 0;
+
+  while (expected && events.length < expected && expansion.loadMoreClicks < maxLoadMore) {
+    const loadMore = await findVisibleLoadMoreControl(page);
+    if (!loadMore) {
+      expansion.stoppedReason = "load-more-not-found";
+      break;
+    }
+
+    const beforeCount = events.length;
+    await loadMore.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+    await loadMore.click({ timeout: 10000 });
+    expansion.loadMoreClicks += 1;
+    events = await waitForEventRowsToIncrease(page, beforeCount);
+
+    if (events.length <= beforeCount) {
+      stalledClicks += 1;
+      if (stalledClicks >= 3) {
+        expansion.stoppedReason = "row-count-did-not-increase";
+        break;
+      }
+      await page.waitForTimeout(1500);
+      continue;
+    }
+
+    stalledClicks = 0;
+  }
+
+  if (expected && events.length >= expected) {
+    expansion.reachedExpectedRows = true;
+    expansion.stoppedReason = "expected-rows-reached";
+  } else if (expected && expansion.stoppedReason === "not-started") {
+    expansion.stoppedReason = expansion.loadMoreClicks >= maxLoadMore ? "max-load-more-reached" : "complete";
+  }
+
+  return { events, expansion };
+}
+
+async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode) {
   const checks = [];
 
   for (const tabCheck of PROFILE_TAB_CHECKS) {
@@ -952,10 +1014,16 @@ async function collectProfileTabChecks(page, summary) {
       continue;
     }
 
-    const tabEvents = await extractEventRows(page);
-    check.actual = tabEvents.length;
-    check.status = Number.isFinite(expected) && expected === check.actual ? "pass" : "fail";
-    check.detail = `${check.selectedTab} tab rows=${check.actual}, profile ${tabCheck.label}=${expected ?? "-"}.`;
+    const { events: tabEvents, expansion } = await expandCurrentProfileTabRows(page, expected, maxLoadMore);
+    const skippedTabEvents = disabledResultMode === "skip" ? tabEvents.filter((event) => event.resultUnavailable) : [];
+    const comparableTabEvents = skippedTabEvents.length
+      ? tabEvents.filter((event) => !event.resultUnavailable)
+      : tabEvents;
+    const adjustedExpected = Number.isFinite(expected) ? Math.max(0, expected - skippedTabEvents.length) : expected;
+    check.expected = adjustedExpected;
+    check.actual = comparableTabEvents.length;
+    check.status = Number.isFinite(adjustedExpected) && adjustedExpected === check.actual ? "pass" : "fail";
+    check.detail = `${check.selectedTab} tab rows=${check.actual}, profile ${tabCheck.label}=${adjustedExpected ?? "-"}${skippedTabEvents.length ? ` (disabled skipped=${skippedTabEvents.length}, original=${expected ?? "-"})` : ""}, loadMoreClicks=${expansion.loadMoreClicks}, stopped=${expansion.stoppedReason}.`;
     checks.push(check);
   }
 
@@ -1035,7 +1103,9 @@ async function clickResultPageNumber(page, pageNumber) {
   for (let i = 0; i < count; i += 1) {
     const control = controls.nth(i);
     if (!(await control.isVisible().catch(() => false))) continue;
-    await control.click({ timeout: 5000 }).catch(() => {});
+    const disabled = await control.evaluate((element) => Boolean(element.disabled) || element.getAttribute("aria-disabled") === "true" || /disabled/i.test(element.className || "")).catch(() => false);
+    if (disabled) continue;
+    await control.click({ timeout: 5000 });
     await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
     await page.waitForTimeout(700);
     return true;
@@ -1043,15 +1113,31 @@ async function clickResultPageNumber(page, pageNumber) {
   return false;
 }
 
+async function visibleResultPageNumbers(page) {
+  const controls = page.locator("a, button, [role=button]");
+  const count = await controls.count().catch(() => 0);
+  const pageNumbers = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const control = controls.nth(i);
+    if (!(await control.isVisible().catch(() => false))) continue;
+    const text = normalizeText(await control.innerText({ timeout: 1000 }).catch(() => ""));
+    if (!/^\d{1,5}$/.test(text)) continue;
+    pageNumbers.push(Number(text));
+  }
+
+  return [...new Set(pageNumbers)].sort((a, b) => a - b);
+}
+
 async function clickNextResultPage(page) {
-  const controls = page.locator("a, button, [role=button]").filter({ hasText: /^(next|>|›|»)\s*$/i });
+  const controls = page.locator("a, button, [role=button]").filter({ hasText: /^(next|>|›|»|…|\.\.\.)\s*$/i });
   const count = await controls.count().catch(() => 0);
   for (let i = 0; i < count; i += 1) {
     const control = controls.nth(i);
     if (!(await control.isVisible().catch(() => false))) continue;
     const disabled = await control.evaluate((element) => Boolean(element.disabled) || element.getAttribute("aria-disabled") === "true" || /disabled/i.test(element.className || "")).catch(() => false);
     if (disabled) continue;
-    await control.click({ timeout: 5000 }).catch(() => {});
+    await control.click({ timeout: 5000 });
     await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
     await page.waitForTimeout(700);
     return true;
@@ -1059,14 +1145,68 @@ async function clickNextResultPage(page) {
   return false;
 }
 
-async function advanceResultPage(page, currentPageNumber, targetPageNumber, inspectEveryPage) {
-  if (await clickNextResultPage(page)) {
-    return { advanced: true, resultPageNumber: currentPageNumber + 1, directPageClicked: false };
+async function clickForwardResultPaginationControl(page) {
+  const controls = page.locator("a, button, [role=button]");
+  const count = await controls.count().catch(() => 0);
+
+  for (let i = 0; i < count; i += 1) {
+    const control = controls.nth(i);
+    if (!(await control.isVisible().catch(() => false))) continue;
+    const forward = await control.evaluate((element) => {
+      const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+      const text = normalize([
+        element.textContent,
+        element.getAttribute("aria-label"),
+        element.getAttribute("title"),
+        element.getAttribute("rel"),
+        element.getAttribute("class")
+      ].filter(Boolean).join(" "));
+      const disabled = Boolean(element.disabled)
+        || element.getAttribute("aria-disabled") === "true"
+        || /disabled/i.test(element.className || "");
+      if (disabled) return false;
+      if (/\b(prev|previous|back)\b/i.test(text)) return false;
+      return /\b(next|forward)\b/i.test(text) || /(^|\s)(›|»|…|\.\.\.)(\s|$)/.test(text);
+    }).catch(() => false);
+    if (!forward) continue;
+
+    await control.click({ timeout: 5000 });
+    await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
+    await page.waitForTimeout(700);
+    return true;
   }
 
+  return false;
+}
+
+async function advanceResultPage(page, currentPageNumber, targetPageNumber, inspectEveryPage) {
   const nextPageNumber = currentPageNumber + 1;
+
+  if (targetPageNumber && targetPageNumber > currentPageNumber) {
+    if (await clickResultPageNumber(page, targetPageNumber)) {
+      return { advanced: true, resultPageNumber: targetPageNumber, directPageClicked: true };
+    }
+
+    const visibleNumbers = await visibleResultPageNumbers(page);
+    const maxVisibleNumber = visibleNumbers.length ? Math.max(...visibleNumbers) : null;
+    if (maxVisibleNumber && targetPageNumber > maxVisibleNumber) {
+      if (await clickForwardResultPaginationControl(page)) {
+        if (await clickResultPageNumber(page, targetPageNumber)) {
+          return { advanced: true, resultPageNumber: targetPageNumber, directPageClicked: true };
+        }
+        if (await clickResultPageNumber(page, Math.max(nextPageNumber, maxVisibleNumber + 1))) {
+          return { advanced: true, resultPageNumber: Math.max(nextPageNumber, maxVisibleNumber + 1), directPageClicked: true };
+        }
+      }
+    }
+  }
+
   if (await clickResultPageNumber(page, nextPageNumber)) {
     return { advanced: true, resultPageNumber: nextPageNumber, directPageClicked: true };
+  }
+
+  if (await clickNextResultPage(page) || await clickForwardResultPaginationControl(page)) {
+    return { advanced: true, resultPageNumber: nextPageNumber, directPageClicked: false };
   }
 
   if (inspectEveryPage && targetPageNumber && targetPageNumber !== currentPageNumber && targetPageNumber !== nextPageNumber) {
@@ -1105,14 +1245,24 @@ function resultPageNumberForRank(rank) {
   return rank && rank > 50 ? Math.ceil(rank / 50) : null;
 }
 
-function resultPageSignature(url, rows, bodyText) {
+function resultSearchStartPageForRank(rank) {
+  const targetPage = resultPageNumberForRank(rank);
+  if (!targetPage) return null;
+  return Math.max(1, targetPage - RESULT_SEARCH_LOOKBEHIND_PAGES);
+}
+
+function resultRowsSignature(rows, bodyText) {
   const range = rankRangeForRows(rows || []);
   const rangeKey = range ? `${range.min}-${range.max}` : "no-ranks";
   const rowKey = (rows || [])
     .slice(0, 5)
     .map((row) => `${row.no}:${normalizeComparable(row.player)}:${row.earnings ?? ""}`)
     .join("|");
-  return `${url || "unknown-url"}::${rangeKey}::${rowKey || bodyText.slice(0, 500)}`;
+  return `${rangeKey}::${rowKey || normalizeText(bodyText).slice(0, 500)}`;
+}
+
+function resultPageSignature(url, rows, bodyText) {
+  return `${url || "unknown-url"}::${resultRowsSignature(rows, bodyText)}`;
 }
 
 function cachedPagesCoverEvent(cachedPages, event) {
@@ -1155,7 +1305,8 @@ function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
   let foundRow = null;
 
   for (const cachedPage of cachedPages) {
-    searchedPages.push({ pageIndex: cachedPage.pageIndex, url: cachedPage.url, rows: cachedPage.rows.length });
+    const range = rankRangeForRows(cachedPage.rows || []);
+    searchedPages.push({ pageIndex: cachedPage.pageIndex, url: cachedPage.url, rows: cachedPage.rows.length, rankRange: range ? `${range.min}-${range.max}` : null });
     const candidates = targetRank ? cachedPage.rows.filter((row) => row.no === targetRank) : cachedPage.rows;
     foundRow = candidates.find((row) => {
       const nameMatches = resultPlayerMatches(row.player, player);
@@ -1216,18 +1367,18 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
   const targetEarnings = event.earnings;
   const pageInspectionLimit = resultPageInspectionLimit(resultPageLimit);
   const inspectEveryPage = shouldInspectEveryResultPage(resultPageLimit);
-  const visitedPageSignatures = new Set();
+  const visitedPageContentSignatures = new Set();
   const searchedPages = [];
   const cachedPages = [];
   let foundRow = null;
   let directPageClicked = false;
   let lastBody = "";
   let resultPageNumber = 1;
-  const targetResultPageNumber = resultPageNumberForRank(targetRank);
+  const searchStartPageNumber = resultSearchStartPageForRank(targetRank);
 
-  if (!inspectEveryPage && targetResultPageNumber) {
-    resultPageNumber = targetResultPageNumber;
-    directPageClicked = await clickResultPageNumber(page, resultPageNumber);
+  if (searchStartPageNumber && searchStartPageNumber > 1) {
+    directPageClicked = await clickResultPageNumber(page, searchStartPageNumber);
+    if (directPageClicked) resultPageNumber = searchStartPageNumber;
   }
 
   for (let pageIndex = 1; pageIndex <= pageInspectionLimit; pageIndex += 1) {
@@ -1236,12 +1387,13 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     const rows = await extractFinalResultRows(page);
     const title = await page.title().catch(() => "");
     const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
-    const pageSignature = resultPageSignature(url, rows, bodyText);
-    if (visitedPageSignatures.has(pageSignature)) break;
-    visitedPageSignatures.add(pageSignature);
+    const pageContentSignature = resultRowsSignature(rows, bodyText);
+    if (visitedPageContentSignatures.has(pageContentSignature)) break;
+    visitedPageContentSignatures.add(pageContentSignature);
+    const range = rankRangeForRows(rows);
 
     cachedPages.push({ pageIndex, resultPageNumber, url, title, rows, bodyText });
-    searchedPages.push({ pageIndex, url, rows: rows.length });
+    searchedPages.push({ pageIndex, url, rows: rows.length, rankRange: range ? `${range.min}-${range.max}` : null });
     const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
     let pageFoundRow = candidates.find((row) => {
       const nameMatches = resultPlayerMatches(row.player, player);
@@ -1255,8 +1407,9 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     }
     if (pageFoundRow && !foundRow) foundRow = pageFoundRow;
 
-    if (foundRow && !inspectEveryPage) break;
-    const advance = await advanceResultPage(page, resultPageNumber, targetResultPageNumber, inspectEveryPage);
+    if (foundRow) break;
+    const preferredPageNumber = searchStartPageNumber && resultPageNumber < searchStartPageNumber ? searchStartPageNumber : null;
+    const advance = await advanceResultPage(page, resultPageNumber, preferredPageNumber, inspectEveryPage);
     if (!advance.advanced) break;
     directPageClicked = directPageClicked || advance.directPageClicked;
     resultPageNumber = advance.resultPageNumber;
@@ -1320,17 +1473,17 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
     const targetEarnings = event.earnings;
     const pageInspectionLimit = resultPageInspectionLimit(resultPageLimit);
     const inspectEveryPage = shouldInspectEveryResultPage(resultPageLimit);
-    const visitedPageSignatures = new Set();
+    const visitedPageContentSignatures = new Set();
     const searchedPages = [];
     let foundRow = null;
     let directPageClicked = false;
     let lastBody = "";
     let resultPageNumber = 1;
-    const targetResultPageNumber = resultPageNumberForRank(targetRank);
+    const searchStartPageNumber = resultSearchStartPageForRank(targetRank);
 
-    if (!inspectEveryPage && targetResultPageNumber) {
-      resultPageNumber = targetResultPageNumber;
-      directPageClicked = await clickResultPageNumber(page, resultPageNumber);
+    if (searchStartPageNumber && searchStartPageNumber > 1) {
+      directPageClicked = await clickResultPageNumber(page, searchStartPageNumber);
+      if (directPageClicked) resultPageNumber = searchStartPageNumber;
     }
 
     for (let pageIndex = 1; pageIndex <= pageInspectionLimit; pageIndex += 1) {
@@ -1339,14 +1492,15 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
       const rows = await extractFinalResultRows(page);
       const title = await page.title().catch(() => "");
       const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
-      const pageSignature = resultPageSignature(url, rows, bodyText);
-      if (visitedPageSignatures.has(pageSignature)) break;
-      visitedPageSignatures.add(pageSignature);
+      const pageContentSignature = resultRowsSignature(rows, bodyText);
+      if (visitedPageContentSignatures.has(pageContentSignature)) break;
+      visitedPageContentSignatures.add(pageContentSignature);
+      const range = rankRangeForRows(rows);
 
       // 캐시 페이지 적재
       cachedPages.push({ pageIndex, resultPageNumber, url, title, rows, bodyText });
 
-      searchedPages.push({ pageIndex, url, rows: rows.length });
+      searchedPages.push({ pageIndex, url, rows: rows.length, rankRange: range ? `${range.min}-${range.max}` : null });
       const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
       let pageFoundRow = candidates.find((row) => {
         const nameMatches = resultPlayerMatches(row.player, player);
@@ -1360,8 +1514,9 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
       }
       if (pageFoundRow && !foundRow) foundRow = pageFoundRow;
 
-      if (foundRow && !inspectEveryPage) break;
-      const advance = await advanceResultPage(page, resultPageNumber, targetResultPageNumber, inspectEveryPage);
+      if (foundRow) break;
+      const preferredPageNumber = searchStartPageNumber && resultPageNumber < searchStartPageNumber ? searchStartPageNumber : null;
+      const advance = await advanceResultPage(page, resultPageNumber, preferredPageNumber, inspectEveryPage);
       if (!advance.advanced) break;
       directPageClicked = directPageClicked || advance.directPageClicked;
       resultPageNumber = advance.resultPageNumber;
@@ -1497,7 +1652,13 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     const bodyText = await page.locator("body").innerText({ timeout });
     const summary = parseSummary(bodyText);
     const { events, expansion } = await expandAllEventRows(page, summary.cashes, maxLoadMore);
-    const tabChecks = await collectProfileTabChecks(page, summary);
+    const unavailableResultEvents = events.filter((event) => event.resultUnavailable);
+    const skippedUnavailableResultEvents = disabledResultMode === "skip" ? unavailableResultEvents : [];
+    const summaryForComparison = profileSummaryForComparison(summary, skippedUnavailableResultEvents);
+    const comparableEvents = skippedUnavailableResultEvents.length
+      ? events.filter((event) => !event.resultUnavailable)
+      : events;
+    const tabChecks = await collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode);
 
     if (!events.length) warnings.push("수집된 이벤트 행이 존재하지 않습니다.");
     if (summary.cashes && events.length < summary.cashes) {
@@ -1512,19 +1673,22 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
       url,
       standingsSources,
       summary,
+      summaryForComparison,
+      summaryAdjustment: skippedUnavailableResultEvents.length
+        ? calculateFromEvents(skippedUnavailableResultEvents)
+        : null,
       events,
       expansion,
       tabChecks,
-      calculated: calculateFromEvents(events),
+      calculated: calculateFromEvents(comparableEvents),
       comparisons: [],
       warnings,
       defects: [],
       status: "fail"
     };
 
-    player.comparisons = compareSummary(player.summary, player.calculated);
+    player.comparisons = compareSummary(player.summaryForComparison || player.summary, player.calculated);
 
-    const unavailableResultEvents = events.filter((event) => event.resultUnavailable);
     for (const event of unavailableResultEvents) {
       if (disabledResultMode === "fail") {
         event.resultPage = {
@@ -1574,7 +1738,7 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
         const checkableDisabledCount = unavailableResultEvents.filter((event) => event.disabledResultUrl).length;
         warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건 중 URL이 있는 ${checkableDisabledCount}건은 직접 접근으로 검증합니다.`);
       } else {
-        warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건은 아직 검증 가능한 페이지가 아니어서 건너뛰었습니다.`);
+        warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건은 아직 검증 가능한 페이지가 아니어서 건너뛰고, 프로필 요약 비교에서도 제외했습니다.`);
       }
     }
 
@@ -2260,6 +2424,9 @@ function runSelfTest() {
   }
   if (resultPageInspectionLimit(50) !== 50 || shouldInspectEveryResultPage(50)) {
     throw new Error("Positive result page limit should cap inspected pages");
+  }
+  if (resultSearchStartPageForRank(501) !== 9 || resultSearchStartPageForRank(28) !== null) {
+    throw new Error("Result search start page calculation failed");
   }
   if (!resultPlayerNameMatches("Александр Басин Russia", "SBasinАлександр Басин")) {
     throw new Error("Unicode player name matching failed");
