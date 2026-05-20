@@ -1376,9 +1376,19 @@ function summarize(report) {
   const resultPages = events.filter((event) => event.resultPage);
   const tabChecks = players.flatMap((player) => player.tabChecks || []);
   const standingsCategories = new Set(players.flatMap((player) => (player.standingsSources || []).map((source) => source.category)));
+  const runStatus = report.runStatus || "complete";
+  const totalPlayers = report.totalPlayers || players.length;
+  const completedPlayers = players.length;
+  const pendingPlayers = Math.max(0, totalPlayers - completedPlayers);
+  const status = defects.length ? "fail" : runStatus === "complete" ? "pass" : "warn";
   return {
-    status: defects.length ? "fail" : "pass",
-    checkedPlayers: players.length,
+    status,
+    runStatus,
+    interruptedReason: report.interruptedReason || "",
+    totalPlayers,
+    completedPlayers,
+    pendingPlayers,
+    checkedPlayers: completedPlayers,
     checkedStandingsCategories: standingsCategories.size,
     passedPlayers: players.filter((player) => player.status === "pass").length,
     failedPlayers: players.filter((player) => player.status !== "pass").length,
@@ -1461,6 +1471,7 @@ function renderReportTemplate(report, isKo) {
     title: isKo ? "WSOP 선수 순위 크롤러 리포트" : "WSOP Player Standings Crawler Report",
     generated: isKo ? "생성 시간" : "Generated",
     source: isKo ? "대상 사이트" : "Source",
+    runStatus: isKo ? "실행 상태" : "Run Status",
     category: isKo ? "Standings 카테고리" : "Standings Categories",
     playersChecked: isKo ? "확인한 선수" : "Players Checked",
     eventsCrawled: isKo ? "ALL 탭 이벤트 수집" : "ALL Events Crawled",
@@ -1650,7 +1661,7 @@ function renderReportTemplate(report, isKo) {
     <div class="header-content">
       <div class="header-title">
         <h1>${escapeHtml(t.title)}</h1>
-        <p>${escapeHtml(t.generated)}: ${escapeHtml(new Date().toLocaleString())} | ${escapeHtml(t.source)}: <a href="${escapeHtml(report.playersUrl || "")}">${escapeHtml(report.playersUrl || "")}</a></p>
+        <p>${escapeHtml(t.generated)}: ${escapeHtml(new Date().toLocaleString())} | ${escapeHtml(t.runStatus)}: ${escapeHtml(summary.runStatus)}${summary.interruptedReason ? ` (${escapeHtml(summary.interruptedReason)})` : ""} | ${escapeHtml(t.source)}: <a href="${escapeHtml(report.playersUrl || "")}">${escapeHtml(report.playersUrl || "")}</a></p>
       </div>
       <div class="header-actions">
         <div class="chart-container">
@@ -1676,7 +1687,7 @@ function renderReportTemplate(report, isKo) {
   <main>
     <div class="dashboard-grid">
       <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.category)}</div><div class="kpi-value">${summary.checkedStandingsCategories}</div></div>
-      <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.playersChecked)}</div><div class="kpi-value">${summary.checkedPlayers}</div></div>
+      <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.playersChecked)}</div><div class="kpi-value">${summary.completedPlayers}/${summary.totalPlayers}</div></div>
       <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.eventsCrawled)}</div><div class="kpi-value">${summary.crawledEvents}</div></div>
       <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.tabChecks)}</div><div class="kpi-value">${summary.tabChecks}</div></div>
       <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.resultPages)}</div><div class="kpi-value">${summary.crawledResultPages}</div></div>
@@ -1949,6 +1960,51 @@ function writeCsv(filePath, rows) {
   fs.writeFileSync(filePath, [headers, ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(","))].map((line) => Array.isArray(line) ? line.join(",") : line).join("\n") + "\n", "utf8");
 }
 
+function buildCrawlerReport({ startedAt, finishedAt, playersUrl, playerEntries, players, runStatus, interruptedReason = "" }) {
+  const completedPlayers = [];
+  const pendingPlayers = [];
+
+  for (let index = 0; index < playerEntries.length; index += 1) {
+    const player = players[index];
+    if (player) {
+      completedPlayers.push(player);
+    } else {
+      const entry = playerEntries[index];
+      pendingPlayers.push({
+        index,
+        url: entry.url,
+        standingsSources: entry.standingsSources
+      });
+    }
+  }
+
+  const report = {
+    mode: "crawler",
+    runStatus,
+    interruptedReason,
+    startedAt,
+    finishedAt,
+    playersUrl,
+    standingsCategories: STANDINGS_CATEGORIES.map((category) => category.label),
+    totalPlayers: playerEntries.length,
+    completedPlayers: completedPlayers.length,
+    pendingPlayers,
+    players: completedPlayers
+  };
+  report.summary = summarize(report);
+  return report;
+}
+
+function writeReportArtifacts(args, report) {
+  writeJson(args.out, report);
+  fs.mkdirSync(path.dirname(args.html), { recursive: true });
+  fs.writeFileSync(args.html, renderHtml(report), "utf8");
+  const koreanHtml = koreanHtmlPath(args.html);
+  fs.writeFileSync(koreanHtml, renderKoreanHtml(report), "utf8");
+  writeCsv(args.defects, flattenDefects(report));
+  return koreanHtml;
+}
+
 function runSelfTest() {
   const parsedArgs = parseArgs(["--result-rank-limit", "50", "--concurrency", "5"]);
   if (parsedArgs.resultRankLimit !== 50) {
@@ -1991,6 +2047,23 @@ function runSelfTest() {
   if (!html.includes("WSOP Player Standings Crawler Report")) throw new Error("HTML render failed");
   const koreanHtml = renderKoreanHtml(sampleReport);
   if (!koreanHtml.includes("WSOP 선수 순위 크롤러 리포트")) throw new Error("Korean HTML render failed");
+  const partialReport = buildCrawlerReport({
+    startedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    playersUrl: DEFAULT_PLAYERS_URL,
+    playerEntries: [
+      { url: "https://example.test/player-1", standingsSources: [] },
+      { url: "https://example.test/player-2", standingsSources: [] }
+    ],
+    players: [sampleReport.players[0]],
+    runStatus: "running"
+  });
+  if (partialReport.summary.completedPlayers !== 1 || partialReport.summary.pendingPlayers !== 1) {
+    throw new Error("Partial report progress summary failed");
+  }
+  if (!renderHtml(partialReport).includes("1/2")) {
+    throw new Error("Partial report HTML progress render failed");
+  }
   console.log("Crawler self-test passed.");
 }
 
@@ -2012,6 +2085,19 @@ async function main() {
   const authWaitMs = args.authWaitMs ?? (args.headed ? 300000 : 0);
   let browser = null;
   let context = null;
+  let stopRequested = false;
+  let interruptedReason = "";
+  let writeProgressReport = null;
+  const handleStopSignal = (signal) => {
+    if (stopRequested) {
+      console.warn(`Second ${signal} received. Exiting immediately.`);
+      process.exit(130);
+    }
+    stopRequested = true;
+    interruptedReason = `Interrupted by ${signal}`;
+    console.warn(`${interruptedReason}. No new players will start; writing partial report.`);
+    if (writeProgressReport) writeProgressReport("interrupted");
+  };
 
   try {
     if (args.userDataDir) {
@@ -2064,11 +2150,28 @@ async function main() {
       console.warn(`  [경고] 동시성 ${requestedConcurrency}은 권장 상한 ${MAX_CONCURRENCY}을 초과하여 ${concurrency}으로 제한합니다.`);
     }
     const queue = playerEntries.map((entry, index) => ({ entry, index }));
+    writeProgressReport = (runStatus = "running") => {
+      const report = buildCrawlerReport({
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        playersUrl: args.playersUrl,
+        playerEntries,
+        players,
+        runStatus,
+        interruptedReason
+      });
+      const koreanHtml = writeReportArtifacts(args, report);
+      return { report, koreanHtml };
+    };
+    process.on("SIGINT", handleStopSignal);
+    process.on("SIGTERM", handleStopSignal);
+
+    writeProgressReport("running");
     
     console.log(`[크롤러 시작] 총 ${playerEntries.length}명의 선수를 병렬 크롤링합니다. (동시성: ${concurrency})`);
 
     const worker = async () => {
-      while (queue.length > 0) {
+      while (!stopRequested && queue.length > 0) {
         const { entry, index } = queue.shift();
         console.log(`  [크롤러] [${index + 1}/${playerEntries.length}] 크롤링 개시: ${entry.url}`);
         
@@ -2092,6 +2195,7 @@ async function main() {
 
           players[index] = playerResult;
           console.log(`  [크롤러] [${index + 1}/${playerEntries.length}] 크롤링 완료: ${entry.url} - 상태: ${playerResult.status}`);
+          writeProgressReport(stopRequested ? "interrupted" : "running");
         } catch (error) {
           console.error(`  [오류] [${index + 1}/${playerEntries.length}] 크롤링 최종 실패: ${entry.url} - ${error.message}`);
           players[index] = {
@@ -2107,6 +2211,7 @@ async function main() {
             status: "fail",
             error: error.message
           };
+          writeProgressReport(stopRequested ? "interrupted" : "running");
         }
       }
     };
@@ -2115,30 +2220,18 @@ async function main() {
     const workerPromises = Array.from({ length: Math.min(concurrency, playerEntries.length) }, worker);
     await Promise.all(workerPromises);
 
-    const report = {
-      mode: "crawler",
-      startedAt,
-      finishedAt: new Date().toISOString(),
-      playersUrl: args.playersUrl,
-      standingsCategories: STANDINGS_CATEGORIES.map((category) => category.label),
-      players
-    };
-    report.summary = summarize(report);
-
-    writeJson(args.out, report);
-    fs.mkdirSync(path.dirname(args.html), { recursive: true });
-    fs.writeFileSync(args.html, renderHtml(report), "utf8");
-    const koreanHtml = koreanHtmlPath(args.html);
-    fs.writeFileSync(koreanHtml, renderKoreanHtml(report), "utf8");
-    writeCsv(args.defects, flattenDefects(report));
+    const { report, koreanHtml } = writeProgressReport(stopRequested ? "interrupted" : "complete");
 
     console.log(`Crawler JSON: ${args.out}`);
     console.log(`Crawler HTML: ${args.html}`);
     console.log(`Crawler Korean HTML: ${koreanHtml}`);
     console.log(`Defect CSV: ${args.defects}`);
     console.log(`Overall: ${report.summary.status}`);
-    if (report.summary.status !== "pass") process.exitCode = 1;
+    if (stopRequested) process.exitCode = 130;
+    else if (report.summary.status !== "pass") process.exitCode = 1;
   } finally {
+    process.removeListener("SIGINT", handleStopSignal);
+    process.removeListener("SIGTERM", handleStopSignal);
     if (context) await context.close().catch(() => {});
     else if (browser) await browser.close().catch(() => {});
   }
