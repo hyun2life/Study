@@ -415,6 +415,25 @@ function profileSummaryForComparison(summary, skippedEvents) {
   return subtractSummaryValues(summary, calculateFromEvents(skippedEvents));
 }
 
+function eventComparisonKey(event) {
+  return [
+    normalizeComparable(event?.eventName || ""),
+    normalizeComparable(event?.date || ""),
+    event?.rank ?? "",
+    event?.earnings ?? ""
+  ].join("|");
+}
+
+function eventContributesToProfileTab(event, tabKey) {
+  if (!event) return false;
+  if (tabKey === "finalTables") return event.rank !== null && event.rank >= 1 && event.rank <= 9;
+  if (event.rank !== 1) return false;
+  if (tabKey === "titles") return true;
+  if (tabKey === "bracelets") return classifyAward(`${event.eventName} ${event.rowText}`) === "bracelet";
+  if (tabKey === "rings") return classifyAward(`${event.eventName} ${event.rowText}`) === "ring";
+  return false;
+}
+
 function compareSummary(summary, calculated) {
   return STAT_DEFS.map((stat) => {
     const top = summary[stat.key];
@@ -568,6 +587,26 @@ async function clickExactTextControl(page, label) {
   }
 
   return false;
+}
+
+async function clickControlWithFallback(control, timeout = 5000) {
+  try {
+    await control.click({ timeout });
+    return true;
+  } catch (error) {
+    const message = String(error?.message || "");
+    const canFallback = /intercepts pointer events|not receiving pointer events|Timeout/i.test(message);
+    if (!canFallback) throw error;
+  }
+
+  return await control.evaluate((element) => {
+    element.scrollIntoView({ block: "center", inline: "center" });
+    if (typeof element.click === "function") {
+      element.click();
+      return true;
+    }
+    return element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+  }).catch(() => false);
 }
 
 async function extractStandingPlayerLinks(page, limit) {
@@ -985,7 +1024,7 @@ async function expandCurrentProfileTabRows(page, expectedRows, maxLoadMore) {
   return { events, expansion };
 }
 
-async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode) {
+async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode, skippedComparisonEvents = []) {
   const checks = [];
 
   for (const tabCheck of PROFILE_TAB_CHECKS) {
@@ -1015,14 +1054,28 @@ async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResul
     }
 
     const { events: tabEvents, expansion } = await expandCurrentProfileTabRows(page, expected, maxLoadMore);
-    const skippedTabEvents = disabledResultMode === "skip" ? tabEvents.filter((event) => event.resultUnavailable) : [];
+    const skippedExpectedEvents = disabledResultMode === "skip"
+      ? skippedComparisonEvents.filter((event) => eventContributesToProfileTab(event, tabCheck.key))
+      : [];
+    const skippedExpectedKeys = new Set(skippedExpectedEvents.map(eventComparisonKey));
+    const skippedTabEvents = disabledResultMode === "skip"
+      ? tabEvents.filter((event) => event.resultUnavailable || skippedExpectedKeys.has(eventComparisonKey(event)))
+      : [];
+    const skippedTabKeys = new Set(skippedTabEvents.map(eventComparisonKey));
+    const extraSkippedTabEvents = disabledResultMode === "skip"
+      ? skippedTabEvents.filter((event) => event.resultUnavailable && !skippedExpectedKeys.has(eventComparisonKey(event)) && eventContributesToProfileTab(event, tabCheck.key))
+      : [];
     const comparableTabEvents = skippedTabEvents.length
-      ? tabEvents.filter((event) => !event.resultUnavailable)
+      ? tabEvents.filter((event) => !skippedTabKeys.has(eventComparisonKey(event)))
       : tabEvents;
-    const adjustedExpected = Number.isFinite(expected) ? Math.max(0, expected - skippedTabEvents.length) : expected;
+    const adjustedExpected = Number.isFinite(expected)
+      ? Math.max(0, expected - skippedExpectedEvents.length - extraSkippedTabEvents.length)
+      : expected;
     check.expected = adjustedExpected;
     check.actual = comparableTabEvents.length;
     check.status = Number.isFinite(adjustedExpected) && adjustedExpected === check.actual ? "pass" : "fail";
+    check.skipped = skippedTabEvents.length;
+    check.originalExpected = expected;
     check.detail = `${check.selectedTab} tab rows=${check.actual}, profile ${tabCheck.label}=${adjustedExpected ?? "-"}${skippedTabEvents.length ? ` (disabled skipped=${skippedTabEvents.length}, original=${expected ?? "-"})` : ""}, loadMoreClicks=${expansion.loadMoreClicks}, stopped=${expansion.stoppedReason}.`;
     checks.push(check);
   }
@@ -1105,7 +1158,12 @@ async function clickResultPageNumber(page, pageNumber) {
     if (!(await control.isVisible().catch(() => false))) continue;
     const disabled = await control.evaluate((element) => Boolean(element.disabled) || element.getAttribute("aria-disabled") === "true" || /disabled/i.test(element.className || "")).catch(() => false);
     if (disabled) continue;
-    await control.click({ timeout: 5000 });
+    const current = await control.evaluate((element) => {
+      const classes = String(element.className || "");
+      return element.getAttribute("aria-current") === "page" || /\bactive\b/i.test(classes);
+    }).catch(() => false);
+    if (current) return true;
+    if (!(await clickControlWithFallback(control, 5000))) continue;
     await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
     await page.waitForTimeout(700);
     return true;
@@ -1137,7 +1195,7 @@ async function clickNextResultPage(page) {
     if (!(await control.isVisible().catch(() => false))) continue;
     const disabled = await control.evaluate((element) => Boolean(element.disabled) || element.getAttribute("aria-disabled") === "true" || /disabled/i.test(element.className || "")).catch(() => false);
     if (disabled) continue;
-    await control.click({ timeout: 5000 });
+    if (!(await clickControlWithFallback(control, 5000))) continue;
     await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
     await page.waitForTimeout(700);
     return true;
@@ -1170,7 +1228,41 @@ async function clickForwardResultPaginationControl(page) {
     }).catch(() => false);
     if (!forward) continue;
 
-    await control.click({ timeout: 5000 });
+    if (!(await clickControlWithFallback(control, 5000))) continue;
+    await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
+    await page.waitForTimeout(700);
+    return true;
+  }
+
+  return false;
+}
+
+async function clickStrictNextResultPage(page) {
+  const controls = page.locator("a, button, [role=button]");
+  const count = await controls.count().catch(() => 0);
+
+  for (let i = 0; i < count; i += 1) {
+    const control = controls.nth(i);
+    if (!(await control.isVisible().catch(() => false))) continue;
+    const next = await control.evaluate((element) => {
+      const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+      const text = normalize([
+        element.textContent,
+        element.getAttribute("aria-label"),
+        element.getAttribute("title"),
+        element.getAttribute("rel"),
+        element.getAttribute("class")
+      ].filter(Boolean).join(" "));
+      const disabled = Boolean(element.disabled)
+        || element.getAttribute("aria-disabled") === "true"
+        || /disabled/i.test(element.className || "");
+      if (disabled) return false;
+      if (/\b(prev|previous|back)\b/i.test(text)) return false;
+      return /\bnext\b/i.test(text) || text === ">" || text === "›" || text === "»";
+    }).catch(() => false);
+    if (!next) continue;
+
+    if (!(await clickControlWithFallback(control, 5000))) continue;
     await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
     await page.waitForTimeout(700);
     return true;
@@ -1205,7 +1297,14 @@ async function advanceResultPage(page, currentPageNumber, targetPageNumber, insp
     return { advanced: true, resultPageNumber: nextPageNumber, directPageClicked: true };
   }
 
-  if (await clickNextResultPage(page) || await clickForwardResultPaginationControl(page)) {
+  if (await clickStrictNextResultPage(page)) {
+    return { advanced: true, resultPageNumber: nextPageNumber, directPageClicked: false };
+  }
+
+  if (await clickForwardResultPaginationControl(page)) {
+    if (await clickResultPageNumber(page, nextPageNumber)) {
+      return { advanced: true, resultPageNumber: nextPageNumber, directPageClicked: true };
+    }
     return { advanced: true, resultPageNumber: nextPageNumber, directPageClicked: false };
   }
 
@@ -1242,7 +1341,11 @@ function shouldInspectEveryResultPage(resultPageLimit) {
 }
 
 function resultPageNumberForRank(rank) {
-  return rank && rank > 50 ? Math.ceil(rank / 50) : null;
+  return rank && rank >= 50 ? Math.floor(rank / 50) + 1 : null;
+}
+
+function resultPageNumberForRangeStart(rank) {
+  return rank && rank >= 50 ? Math.floor(rank / 50) + 1 : 1;
 }
 
 function resultSearchStartPageForRank(rank) {
@@ -1374,6 +1477,9 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
   let directPageClicked = false;
   let lastBody = "";
   let resultPageNumber = 1;
+  let previousRange = null;
+  const pendingResultPageNumbers = [];
+  const gapRecoveryPageNumbers = new Set();
   const searchStartPageNumber = resultSearchStartPageForRank(targetRank);
 
   if (searchStartPageNumber && searchStartPageNumber > 1) {
@@ -1387,10 +1493,24 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     const rows = await extractFinalResultRows(page);
     const title = await page.title().catch(() => "");
     const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
+    const range = rankRangeForRows(rows);
+    if (range && previousRange && range.min > previousRange.max + 1) {
+      const missingPageNumber = resultPageNumberForRangeStart(previousRange.max + 1);
+      const currentRangePageNumber = resultPageNumberForRangeStart(range.min);
+      if (!gapRecoveryPageNumbers.has(missingPageNumber)) {
+        pendingResultPageNumbers.unshift(currentRangePageNumber);
+        gapRecoveryPageNumbers.add(missingPageNumber);
+        if (await clickResultPageNumber(page, missingPageNumber)) {
+          directPageClicked = true;
+          resultPageNumber = missingPageNumber;
+          pageIndex -= 1;
+          continue;
+        }
+      }
+    }
     const pageContentSignature = resultRowsSignature(rows, bodyText);
     if (visitedPageContentSignatures.has(pageContentSignature)) break;
     visitedPageContentSignatures.add(pageContentSignature);
-    const range = rankRangeForRows(rows);
 
     cachedPages.push({ pageIndex, resultPageNumber, url, title, rows, bodyText });
     searchedPages.push({ pageIndex, url, rows: rows.length, rankRange: range ? `${range.min}-${range.max}` : null });
@@ -1406,8 +1526,15 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
       pageFoundRow = findResultRowInBodyText(lastBody, player, targetRank, targetEarnings);
     }
     if (pageFoundRow && !foundRow) foundRow = pageFoundRow;
+    previousRange = range || previousRange;
 
     if (foundRow) break;
+    const pendingPageNumber = pendingResultPageNumbers.shift();
+    if (pendingPageNumber && pendingPageNumber !== resultPageNumber && await clickResultPageNumber(page, pendingPageNumber)) {
+      directPageClicked = true;
+      resultPageNumber = pendingPageNumber;
+      continue;
+    }
     const preferredPageNumber = searchStartPageNumber && resultPageNumber < searchStartPageNumber ? searchStartPageNumber : null;
     const advance = await advanceResultPage(page, resultPageNumber, preferredPageNumber, inspectEveryPage);
     if (!advance.advanced) break;
@@ -1479,6 +1606,9 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
     let directPageClicked = false;
     let lastBody = "";
     let resultPageNumber = 1;
+    let previousRange = null;
+    const pendingResultPageNumbers = [];
+    const gapRecoveryPageNumbers = new Set();
     const searchStartPageNumber = resultSearchStartPageForRank(targetRank);
 
     if (searchStartPageNumber && searchStartPageNumber > 1) {
@@ -1492,10 +1622,24 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
       const rows = await extractFinalResultRows(page);
       const title = await page.title().catch(() => "");
       const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
+      const range = rankRangeForRows(rows);
+      if (range && previousRange && range.min > previousRange.max + 1) {
+        const missingPageNumber = resultPageNumberForRangeStart(previousRange.max + 1);
+        const currentRangePageNumber = resultPageNumberForRangeStart(range.min);
+        if (!gapRecoveryPageNumbers.has(missingPageNumber)) {
+          pendingResultPageNumbers.unshift(currentRangePageNumber);
+          gapRecoveryPageNumbers.add(missingPageNumber);
+          if (await clickResultPageNumber(page, missingPageNumber)) {
+            directPageClicked = true;
+            resultPageNumber = missingPageNumber;
+            pageIndex -= 1;
+            continue;
+          }
+        }
+      }
       const pageContentSignature = resultRowsSignature(rows, bodyText);
       if (visitedPageContentSignatures.has(pageContentSignature)) break;
       visitedPageContentSignatures.add(pageContentSignature);
-      const range = rankRangeForRows(rows);
 
       // 캐시 페이지 적재
       cachedPages.push({ pageIndex, resultPageNumber, url, title, rows, bodyText });
@@ -1513,8 +1657,15 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
         pageFoundRow = findResultRowInBodyText(lastBody, player, targetRank, targetEarnings);
       }
       if (pageFoundRow && !foundRow) foundRow = pageFoundRow;
+      previousRange = range || previousRange;
 
       if (foundRow) break;
+      const pendingPageNumber = pendingResultPageNumbers.shift();
+      if (pendingPageNumber && pendingPageNumber !== resultPageNumber && await clickResultPageNumber(page, pendingPageNumber)) {
+        directPageClicked = true;
+        resultPageNumber = pendingPageNumber;
+        continue;
+      }
       const preferredPageNumber = searchStartPageNumber && resultPageNumber < searchStartPageNumber ? searchStartPageNumber : null;
       const advance = await advanceResultPage(page, resultPageNumber, preferredPageNumber, inspectEveryPage);
       if (!advance.advanced) break;
@@ -1658,7 +1809,7 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     const comparableEvents = skippedUnavailableResultEvents.length
       ? events.filter((event) => !event.resultUnavailable)
       : events;
-    const tabChecks = await collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode);
+    const tabChecks = await collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode, skippedUnavailableResultEvents);
 
     if (!events.length) warnings.push("수집된 이벤트 행이 존재하지 않습니다.");
     if (summary.cashes && events.length < summary.cashes) {
@@ -2428,6 +2579,9 @@ function runSelfTest() {
   if (resultSearchStartPageForRank(501) !== 9 || resultSearchStartPageForRank(28) !== null) {
     throw new Error("Result search start page calculation failed");
   }
+  if (resultPageNumberForRank(50) !== 2 || resultPageNumberForRank(100) !== 3 || resultPageNumberForRangeStart(400) !== 9) {
+    throw new Error("Result page number calculation failed");
+  }
   if (!resultPlayerNameMatches("Александр Басин Russia", "SBasinАлександр Басин")) {
     throw new Error("Unicode player name matching failed");
   }
@@ -2471,6 +2625,27 @@ function runSelfTest() {
   });
   if (!unavailableResultEvent.resultUnavailable || unavailableResultEvent.resultUrl || unavailableResultEvent.hasResultControl) {
     throw new Error("Disabled Result control should be preserved as unavailable, not checkable");
+  }
+  const skippedBraceletWin = normalizeEvent({
+    rowIndex: 5,
+    text: "WSOP Bracelet #1 $12,345 Result",
+    cells: ["WSOP Bracelet", "#1", "$12,345", "Result"],
+    headers: ["Event", "Rank", "Earnings", "Result"],
+    resultUrl: null,
+    hasResultControl: false,
+    resultUnavailable: true,
+    resultUnavailableReason: "Result disabled"
+  });
+  if (!eventContributesToProfileTab(skippedBraceletWin, "titles") || !eventContributesToProfileTab(skippedBraceletWin, "bracelets") || !eventContributesToProfileTab(skippedBraceletWin, "finalTables") || eventContributesToProfileTab(skippedBraceletWin, "rings")) {
+    throw new Error("Skipped Result event tab contribution classification failed");
+  }
+  const skippedAdjustment = calculateFromEvents([skippedBraceletWin]);
+  if (skippedAdjustment.titles !== 1 || skippedAdjustment.bracelets !== 1 || skippedAdjustment.rings !== 0 || skippedAdjustment.finalTables !== 1 || skippedAdjustment.cashes !== 1 || skippedAdjustment.totalEarnings !== 12345) {
+    throw new Error("Skipped winning event summary adjustment failed");
+  }
+  const adjustedSummary = profileSummaryForComparison(parseSummary("Title 2 Bracelets 2 Rings 0 Final Tables 2 Cashes 2 Total Earnings $112,345"), [skippedBraceletWin]);
+  if (adjustedSummary.titles !== 1 || adjustedSummary.bracelets !== 1 || adjustedSummary.rings !== 0 || adjustedSummary.finalTables !== 1 || adjustedSummary.cashes !== 1 || adjustedSummary.totalEarnings !== 100000) {
+    throw new Error("Skipped winning event should adjust all dependent summary metrics");
   }
   const calculated = calculateFromEvents(events);
   const comparisons = compareSummary(summary, calculated);
