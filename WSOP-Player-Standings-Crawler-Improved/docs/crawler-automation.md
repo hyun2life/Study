@@ -45,7 +45,10 @@ powershell -ExecutionPolicy Bypass -File automation\run_player_standings_crawler
   -Headed `
   -Limit 10 `
   -ResultLimit 3 `
+  -ResultPageLimit 0 `
   -Out "automation\output\wsop-player-crawler-live-data.json" `
   -HtmlReport "automation\output\wsop-player-crawler-live-report.html" `
   -DefectReport "automation\output\wsop-player-crawler-live-defects.csv"
 ```
+
+`-ResultPageLimit 0`은 각 Result 상세의 최종 순위표를 마지막 페이지까지 모두 확인합니다. 정합성보다 실행 시간을 줄이는 것이 중요하면 `-ResultPageLimit 50`처럼 충분히 큰 양수로 제한할 수 있습니다.

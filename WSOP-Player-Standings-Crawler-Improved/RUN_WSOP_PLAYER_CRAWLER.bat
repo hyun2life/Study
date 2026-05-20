@@ -20,7 +20,7 @@ set "RESULT_LIMIT=0"
 set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=50"
 set "RESULT_PAGE_LIMIT=0"
-set "CONCURRENCY=5"
+set "CONCURRENCY=8"
 
 echo ============================================
 echo WSOP Player Standings Crawler

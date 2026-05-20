@@ -144,7 +144,98 @@ function normalizeText(value) {
 }
 
 function normalizeComparable(value) {
-  return normalizeText(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return normalizeText(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function comparableNameCandidates(value) {
+  const originalText = normalizeText(value);
+  const text = originalText.toLowerCase();
+  const candidates = new Set();
+  const add = (candidate) => {
+    const comparable = normalizeComparable(candidate);
+    if (comparable.length >= 3) candidates.add(comparable);
+  };
+
+  add(text);
+  add(text.replace(/^[a-z0-9_ -]+(?=[^\p{ASCII}])/iu, ""));
+  add(text.replace(/[\p{ASCII}]+/gu, " "));
+
+  const tokens = originalText.split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    add(tokens.slice(0, 2).join(" "));
+    add(tokens.slice(-2).join(" "));
+    add(tokens.slice(0, -1).join(" "));
+  }
+
+  const capitalizedSuffix = originalText.match(/([A-Z][a-z]+\s+[A-Z][a-z]+)$/);
+  if (capitalizedSuffix) add(capitalizedSuffix[1]);
+
+  return Array.from(candidates);
+}
+
+function resultPlayerNameMatches(rowPlayer, playerName) {
+  const rowNames = comparableNameCandidates(rowPlayer);
+  const targetNames = comparableNameCandidates(playerName);
+  if (!targetNames.length) return true;
+  if (!rowNames.length) return false;
+  return rowNames.some((rowName) => targetNames.some((targetName) => rowName.includes(targetName) || targetName.includes(rowName)));
+}
+
+function playerNameCandidates(player) {
+  const values = [
+    player?.name,
+    ...(player?.standingsSources || []).map((source) => source.name)
+  ];
+  return Array.from(new Set(values.flatMap(comparableNameCandidates)));
+}
+
+function resultPlayerMatches(rowPlayer, player) {
+  const rowNames = comparableNameCandidates(rowPlayer);
+  const targetNames = playerNameCandidates(player);
+  if (!targetNames.length) return true;
+  if (!rowNames.length) return false;
+  return rowNames.some((rowName) => targetNames.some((targetName) => rowName.includes(targetName) || targetName.includes(rowName)));
+}
+
+function findResultRowInBodyText(bodyText, player, targetRank, targetEarnings) {
+  const text = normalizeText(bodyText);
+  if (!text) return null;
+
+  const targetNames = playerNameCandidates(player);
+  if (!targetNames.length) return null;
+
+  const moneyText = targetEarnings === null || targetEarnings === undefined
+    ? null
+    : targetEarnings.toLocaleString("en-US");
+  const moneyPattern = moneyText
+    ? new RegExp(`(?:[$€£]\\s*)?${escapeRegExp(moneyText)}\\b`, "g")
+    : null;
+  const matches = moneyPattern ? Array.from(text.matchAll(moneyPattern)) : [{ index: text.toLowerCase().indexOf(normalizeText(player.name).toLowerCase()) }];
+
+  for (const match of matches) {
+    const index = match.index ?? -1;
+    if (index < 0) continue;
+    const nearbyText = text.slice(Math.max(0, index - 180), Math.min(text.length, index + 260));
+    const nearbyComparable = normalizeComparable(nearbyText);
+    const nameMatches = targetNames.some((targetName) => nearbyComparable.includes(targetName));
+    if (!nameMatches) continue;
+
+    const beforeMoney = nearbyText.slice(0, Math.max(0, index - Math.max(0, index - 180)));
+    const rankMatch = beforeMoney.match(/(?:^|\s)(\d{1,6})\s+[^$€£]{2,180}$/);
+    const parsedRank = rankMatch ? Number(rankMatch[1].replace(/,/g, "")) : targetRank;
+    if (targetRank && parsedRank && parsedRank !== targetRank) continue;
+
+    return {
+      no: parsedRank || targetRank,
+      player: player.name,
+      country: "",
+      earnings: targetEarnings,
+      rowText: nearbyText,
+      source: "final-result-text"
+    };
+  }
+
+  return null;
 }
 
 function escapeRegExp(value) {
@@ -164,6 +255,17 @@ function csvEscape(value) {
   const text = String(value ?? "");
   if (/[",\r\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
   return text;
+}
+
+function isBrowserClosedError(error) {
+  return /Target page, context or browser has been closed/i.test(error?.message || String(error || ""));
+}
+
+function localizeWarning(warning, isKo) {
+  if (!isKo) return warning;
+  const crawlError = String(warning || "").match(/^Crawl error: (.*)$/);
+  if (crawlError) return `크롤링 에러: ${crawlError[1]}`;
+  return warning;
 }
 
 function parseNumber(value) {
@@ -586,6 +688,23 @@ function cleanPlayerName(nameValue, urlValue) {
   return name || slugName || urlValue;
 }
 
+function canonicalPlayerName(profileName, standingsSources = []) {
+  const cleanedProfileName = normalizeText(profileName);
+  const sourceNames = standingsSources
+    .map((source) => normalizeText(source.name))
+    .filter(Boolean);
+
+  for (const sourceName of sourceNames) {
+    const profileComparable = normalizeComparable(cleanedProfileName);
+    const sourceComparable = normalizeComparable(sourceName);
+    if (sourceComparable && profileComparable.includes(sourceComparable)) {
+      return sourceName;
+    }
+  }
+
+  return cleanedProfileName;
+}
+
 async function extractPlayerName(page) {
   const headings = await page.locator("h1, h2, [data-testid*=name i], [class*=name i]").evaluateAll((nodes) => nodes.map((node) => node.textContent || "")).catch(() => []);
   const title = await page.title().catch(() => "");
@@ -675,6 +794,39 @@ async function selectProfileTab(page, tabLabel) {
   return false;
 }
 
+async function findVisibleLoadMoreControl(page) {
+  const controls = page.locator("button, a, [role=button]").filter({ hasText: /load\s*more|show\s*more|more/i });
+  const count = await controls.count().catch(() => 0);
+
+  for (let i = count - 1; i >= 0; i -= 1) {
+    const control = controls.nth(i);
+    const text = normalizeText(await control.innerText({ timeout: 1000 }).catch(() => ""));
+    if (!/\b(load\s*more|show\s*more|more)\b/i.test(text)) continue;
+    if (!(await control.isVisible().catch(() => false))) continue;
+    const disabled = await control
+      .evaluate((element) => Boolean(element.disabled) || element.getAttribute("aria-disabled") === "true" || /disabled|loading/i.test(element.className || ""))
+      .catch(() => false);
+    if (disabled) continue;
+    return control;
+  }
+
+  return null;
+}
+
+async function waitForEventRowsToIncrease(page, beforeCount, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let latestEvents = await extractEventRows(page);
+
+  while (Date.now() < deadline) {
+    if (latestEvents.length > beforeCount) return latestEvents;
+    await page.waitForLoadState("networkidle", { timeout: 1500 }).catch(() => {});
+    await page.waitForTimeout(700);
+    latestEvents = await extractEventRows(page);
+  }
+
+  return latestEvents;
+}
+
 async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
   const expansion = {
     tab: "ALL",
@@ -687,6 +839,7 @@ async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
 
   let events = await extractEventRows(page);
   const expected = Number.isFinite(expectedCashes) && expectedCashes > 0 ? expectedCashes : null;
+  let stalledClicks = 0;
 
   while (expansion.loadMoreClicks < maxLoadMore) {
     if (expected && events.length >= expected) {
@@ -695,29 +848,29 @@ async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
       break;
     }
 
-    const loadMore = page
-      .locator("button:has-text('Load more'), a:has-text('Load more'), [role=button]:has-text('Load more')")
-      .last();
-    if (!(await loadMore.count().catch(() => 0)) || !(await loadMore.isVisible().catch(() => false))) {
+    const loadMore = await findVisibleLoadMoreControl(page);
+    if (!loadMore) {
       expansion.stoppedReason = "load-more-not-found";
       break;
     }
 
     const beforeCount = events.length;
+    await loadMore.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
     await loadMore.click({ timeout: 10000 });
     expansion.loadMoreClicks += 1;
-    await page.waitForFunction(
-      (count) => document.querySelectorAll("table tbody tr, table tr").length > count,
-      beforeCount,
-      { timeout: 5000 }
-    ).catch(() => {});
-    await page.waitForTimeout(500);
-    events = await extractEventRows(page);
+    events = await waitForEventRowsToIncrease(page, beforeCount);
 
     if (events.length <= beforeCount) {
-      expansion.stoppedReason = "row-count-did-not-increase";
-      break;
+      stalledClicks += 1;
+      if (stalledClicks >= 3) {
+        expansion.stoppedReason = "row-count-did-not-increase";
+        break;
+      }
+      await page.waitForTimeout(1500);
+      continue;
     }
+
+    stalledClicks = 0;
   }
 
   if (expansion.stoppedReason === "not-started") {
@@ -780,21 +933,52 @@ async function extractFinalResultRows(page) {
       return match ? Math.round(Number(match[0].replace(/[,\s]/g, ""))) : null;
     };
     const rows = [];
+    const seen = new Set();
+
+    const addRow = (row) => {
+      if (row.no === null || !row.player) return;
+      const key = `${row.no}:${row.player}:${row.earnings ?? ""}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push(row);
+    };
 
     for (const table of Array.from(document.querySelectorAll("table"))) {
       const headerText = normalize(table.querySelector("thead")?.textContent || table.textContent || "");
       if (!/\bNo\b/i.test(headerText) || !/\bPlayer\b/i.test(headerText) || !/\bEarnings\b/i.test(headerText)) continue;
 
-      for (const row of Array.from(table.querySelectorAll("tbody tr"))) {
+      for (const row of Array.from(table.querySelectorAll("tr"))) {
         const cells = Array.from(row.querySelectorAll("td, th")).map((cell) => normalize(cell.textContent));
         if (cells.length < 3) continue;
         const no = parseNumber(cells[0]);
         const earnings = parseMoney(cells[cells.length - 1]);
         const player = cells[1] || "";
         const country = cells.length >= 4 ? cells[cells.length - 2] : "";
-        if (no === null || !player) continue;
-        rows.push({ no, player, country, earnings, cells, rowText: normalize(row.textContent) });
+        addRow({ no, player, country, earnings, cells, rowText: normalize(row.textContent) });
       }
+    }
+
+    if (rows.length) return rows;
+
+    const bodyText = normalize(document.body?.innerText || "");
+    const resultStart = bodyText.search(/Final Result/i);
+    const headerStart = bodyText.search(/\bNo\s+Player\s+Country\s+Earnings\b/i);
+    const start = headerStart >= 0 ? headerStart : resultStart;
+    const finalResultText = start >= 0 ? bodyText.slice(start) : bodyText;
+    const rowPattern = /(?:^|\s)(\d{1,6})\s+(.{2,180}?)\s+[$€£]([\d,]+)(?=\s+\d{1,6}\s+|$)/g;
+    let match = null;
+    while ((match = rowPattern.exec(finalResultText)) !== null) {
+      const no = Number(match[1].replace(/,/g, ""));
+      const player = normalize(match[2]);
+      const earnings = parseMoney(match[3]);
+      addRow({
+        no,
+        player,
+        country: "",
+        earnings,
+        cells: [String(no), player, earnings === null ? "" : `$${earnings.toLocaleString("en-US")}`],
+        rowText: normalize(match[0])
+      });
     }
 
     return rows;
@@ -833,6 +1017,25 @@ async function clickNextResultPage(page) {
   return false;
 }
 
+async function advanceResultPage(page, currentPageNumber, targetPageNumber, inspectEveryPage) {
+  if (await clickNextResultPage(page)) {
+    return { advanced: true, resultPageNumber: currentPageNumber + 1, directPageClicked: false };
+  }
+
+  const nextPageNumber = currentPageNumber + 1;
+  if (await clickResultPageNumber(page, nextPageNumber)) {
+    return { advanced: true, resultPageNumber: nextPageNumber, directPageClicked: true };
+  }
+
+  if (inspectEveryPage && targetPageNumber && targetPageNumber !== currentPageNumber && targetPageNumber !== nextPageNumber) {
+    if (await clickResultPageNumber(page, targetPageNumber)) {
+      return { advanced: true, resultPageNumber: targetPageNumber, directPageClicked: true };
+    }
+  }
+
+  return { advanced: false, resultPageNumber: currentPageNumber, directPageClicked: false };
+}
+
 function rankRangeForRows(rows) {
   const ranks = rows
     .map((row) => row.no)
@@ -850,6 +1053,14 @@ function resultPageInspectionLimit(resultPageLimit) {
     throw new Error("--result-page-limit must be 0 or a positive number.");
   }
   return Math.floor(resultPageLimit);
+}
+
+function shouldInspectEveryResultPage(resultPageLimit) {
+  return resultPageLimit === 0;
+}
+
+function resultPageNumberForRank(rank) {
+  return rank && rank > 50 ? Math.ceil(rank / 50) : null;
 }
 
 function resultPageSignature(url, rows, bodyText) {
@@ -896,7 +1107,6 @@ function storeResultPageCache(urlKey, cachedPages) {
 
 // 캐시된 결과 페이지 데이터를 가지고 로컬에서 검증을 수행하는 유틸리티
 function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
-  const targetName = normalizeComparable(player.name);
   const targetRank = event.rank;
   const targetEarnings = event.earnings;
   const searchedPages = [];
@@ -906,8 +1116,7 @@ function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
     searchedPages.push({ pageIndex: cachedPage.pageIndex, url: cachedPage.url, rows: cachedPage.rows.length });
     const candidates = targetRank ? cachedPage.rows.filter((row) => row.no === targetRank) : cachedPage.rows;
     foundRow = candidates.find((row) => {
-      const rowName = normalizeComparable(row.player);
-      const nameMatches = targetName ? rowName.includes(targetName) || targetName.includes(rowName) : true;
+      const nameMatches = resultPlayerMatches(row.player, player);
       const earningsMatches = targetEarnings === null || targetEarnings === undefined || row.earnings === targetEarnings;
       return nameMatches && earningsMatches;
     }) || null;
@@ -918,22 +1127,8 @@ function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
   if (!foundRow) {
     for (const cachedPage of cachedPages) {
       const lastBody = cachedPage.bodyText || "";
-      const escapedName = escapeRegExp(normalizeText(player.name));
-      const rankNameMatches = targetRank
-        ? new RegExp(`(?:^|\\s)${targetRank}\\s+${escapedName}\\b`, "i").test(lastBody)
-        : lastBody.toLowerCase().includes(normalizeText(player.name).toLowerCase());
-      const nameIndex = lastBody.toLowerCase().indexOf(normalizeText(player.name).toLowerCase());
-      const nearbyText = nameIndex >= 0 ? lastBody.slice(Math.max(0, nameIndex - 80), nameIndex + 260) : "";
-      const earningsMatches = targetEarnings === null || targetEarnings === undefined || nearbyText.includes(targetEarnings.toLocaleString("en-US"));
-      if (rankNameMatches && earningsMatches) {
-        foundRow = {
-          no: targetRank,
-          player: player.name,
-          country: "",
-          earnings: targetEarnings,
-          rowText: nearbyText,
-          source: "final-result-text"
-        };
+      foundRow = findResultRowInBodyText(lastBody, player, targetRank, targetEarnings);
+      if (foundRow) {
         break;
       }
     }
@@ -975,10 +1170,10 @@ function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
 }
 
 async function extractResultPageData(page, player, event, resultPageLimit) {
-  const targetName = normalizeComparable(player.name);
   const targetRank = event.rank;
   const targetEarnings = event.earnings;
   const pageInspectionLimit = resultPageInspectionLimit(resultPageLimit);
+  const inspectEveryPage = shouldInspectEveryResultPage(resultPageLimit);
   const visitedPageSignatures = new Set();
   const searchedPages = [];
   const cachedPages = [];
@@ -986,9 +1181,10 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
   let directPageClicked = false;
   let lastBody = "";
   let resultPageNumber = 1;
+  const targetResultPageNumber = resultPageNumberForRank(targetRank);
 
-  if (targetRank && targetRank > 50) {
-    resultPageNumber = Math.ceil(targetRank / 50);
+  if (!inspectEveryPage && targetResultPageNumber) {
+    resultPageNumber = targetResultPageNumber;
     directPageClicked = await clickResultPageNumber(page, resultPageNumber);
   }
 
@@ -1006,36 +1202,21 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     searchedPages.push({ pageIndex, url, rows: rows.length });
     const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
     foundRow = candidates.find((row) => {
-      const rowName = normalizeComparable(row.player);
-      const nameMatches = targetName ? rowName.includes(targetName) || targetName.includes(rowName) : true;
+      const nameMatches = resultPlayerMatches(row.player, player);
       const earningsMatches = targetEarnings === null || targetEarnings === undefined || row.earnings === targetEarnings;
       return nameMatches && earningsMatches;
     }) || null;
 
     if (!foundRow) {
       lastBody = bodyText;
-      const escapedName = escapeRegExp(normalizeText(player.name));
-      const rankNameMatches = targetRank
-        ? new RegExp(`(?:^|\\s)${targetRank}\\s+${escapedName}\\b`, "i").test(lastBody)
-        : lastBody.toLowerCase().includes(normalizeText(player.name).toLowerCase());
-      const nameIndex = lastBody.toLowerCase().indexOf(normalizeText(player.name).toLowerCase());
-      const nearbyText = nameIndex >= 0 ? lastBody.slice(Math.max(0, nameIndex - 80), nameIndex + 260) : "";
-      const earningsMatches = targetEarnings === null || targetEarnings === undefined || nearbyText.includes(targetEarnings.toLocaleString("en-US"));
-      if (rankNameMatches && earningsMatches) {
-        foundRow = {
-          no: targetRank,
-          player: player.name,
-          country: "",
-          earnings: targetEarnings,
-          rowText: nearbyText,
-          source: "final-result-text"
-        };
-      }
+      foundRow = findResultRowInBodyText(lastBody, player, targetRank, targetEarnings);
     }
 
-    if (foundRow) break;
-    if (!(await clickNextResultPage(page))) break;
-    resultPageNumber += 1;
+    if (foundRow && !inspectEveryPage) break;
+    const advance = await advanceResultPage(page, resultPageNumber, targetResultPageNumber, inspectEveryPage);
+    if (!advance.advanced) break;
+    directPageClicked = directPageClicked || advance.directPageClicked;
+    resultPageNumber = advance.resultPageNumber;
   }
 
   const checks = {
@@ -1092,19 +1273,20 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
 
     // 크롤링하면서 데이터를 누적하여 캐시 데이터 수집
     const cachedPages = [];
-    const targetName = normalizeComparable(player.name);
     const targetRank = event.rank;
     const targetEarnings = event.earnings;
     const pageInspectionLimit = resultPageInspectionLimit(resultPageLimit);
+    const inspectEveryPage = shouldInspectEveryResultPage(resultPageLimit);
     const visitedPageSignatures = new Set();
     const searchedPages = [];
     let foundRow = null;
     let directPageClicked = false;
     let lastBody = "";
     let resultPageNumber = 1;
+    const targetResultPageNumber = resultPageNumberForRank(targetRank);
 
-    if (targetRank && targetRank > 50) {
-      resultPageNumber = Math.ceil(targetRank / 50);
+    if (!inspectEveryPage && targetResultPageNumber) {
+      resultPageNumber = targetResultPageNumber;
       directPageClicked = await clickResultPageNumber(page, resultPageNumber);
     }
 
@@ -1124,36 +1306,21 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
       searchedPages.push({ pageIndex, url, rows: rows.length });
       const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
       foundRow = candidates.find((row) => {
-        const rowName = normalizeComparable(row.player);
-        const nameMatches = targetName ? rowName.includes(targetName) || targetName.includes(rowName) : true;
+        const nameMatches = resultPlayerMatches(row.player, player);
         const earningsMatches = targetEarnings === null || targetEarnings === undefined || row.earnings === targetEarnings;
         return nameMatches && earningsMatches;
       }) || null;
 
       if (!foundRow) {
         lastBody = bodyText;
-        const escapedName = escapeRegExp(normalizeText(player.name));
-        const rankNameMatches = targetRank
-          ? new RegExp(`(?:^|\\s)${targetRank}\\s+${escapedName}\\b`, "i").test(lastBody)
-          : lastBody.toLowerCase().includes(normalizeText(player.name).toLowerCase());
-        const nameIndex = lastBody.toLowerCase().indexOf(normalizeText(player.name).toLowerCase());
-        const nearbyText = nameIndex >= 0 ? lastBody.slice(Math.max(0, nameIndex - 80), nameIndex + 260) : "";
-        const earningsMatches = targetEarnings === null || targetEarnings === undefined || nearbyText.includes(targetEarnings.toLocaleString("en-US"));
-        if (rankNameMatches && earningsMatches) {
-          foundRow = {
-            no: targetRank,
-            player: player.name,
-            country: "",
-            earnings: targetEarnings,
-            rowText: nearbyText,
-            source: "final-result-text"
-          };
-        }
+        foundRow = findResultRowInBodyText(lastBody, player, targetRank, targetEarnings);
       }
 
-      if (foundRow) break;
-      if (!(await clickNextResultPage(page))) break;
-      resultPageNumber += 1;
+      if (foundRow && !inspectEveryPage) break;
+      const advance = await advanceResultPage(page, resultPageNumber, targetResultPageNumber, inspectEveryPage);
+      if (!advance.advanced) break;
+      directPageClicked = directPageClicked || advance.directPageClicked;
+      resultPageNumber = advance.resultPageNumber;
     }
 
     // 전역 캐시에 저장
@@ -1281,7 +1448,8 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
       return /cashes/i.test(text) || /earnings/i.test(text);
     }, null, { timeout: 10000 }).catch(() => {});
 
-    const name = await extractPlayerName(page);
+    const profileName = await extractPlayerName(page);
+    const name = canonicalPlayerName(profileName, standingsSources);
     const bodyText = await page.locator("body").innerText({ timeout });
     const summary = parseSummary(bodyText);
     const { events, expansion } = await expandAllEventRows(page, summary.cashes, maxLoadMore);
@@ -1785,7 +1953,7 @@ function renderReportTemplate(report, isKo) {
             ${hasWarning ? `<div class="defects-summary-box" style="background:var(--warning-bg);border-color:var(--warning);color:var(--text-main);">
               <h4>⚠️ Warnings</h4>
               <ul style="margin:0;padding-left:20px;">
-                ${player.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join("")}
+                ${player.warnings.map(w => `<li>${escapeHtml(localizeWarning(w, isKo))}</li>`).join("")}
               </ul>
             </div>` : ""}
 
@@ -2013,12 +2181,34 @@ function runSelfTest() {
   if (parsedArgs.concurrency !== 5) {
     throw new Error("Concurrency argument parsing failed");
   }
+  if (resultPageInspectionLimit(0) !== Number.MAX_SAFE_INTEGER || !shouldInspectEveryResultPage(0)) {
+    throw new Error("Result page limit 0 should inspect every page");
+  }
+  if (resultPageInspectionLimit(50) !== 50 || shouldInspectEveryResultPage(50)) {
+    throw new Error("Positive result page limit should cap inspected pages");
+  }
+  if (!resultPlayerNameMatches("Александр Басин Russia", "SBasinАлександр Басин")) {
+    throw new Error("Unicode player name matching failed");
+  }
+  if (!resultPlayerNameMatches("Christian Frimodt Denmark", "ButijustknowChristian Frimodt")) {
+    throw new Error("Screen-name-prefixed player name matching failed");
+  }
+  if (!resultPlayerMatches("Александр Басин Russia", { name: "SBasinАлександр Басин", standingsSources: [{ name: "Александр Басин" }] })) {
+    throw new Error("Standings real-name alias matching failed");
+  }
+  const textFallbackRow = findResultRowInBodyText("Final Result No Player Country Earnings 52 Александр Басин Russia $876,595 53 Other Player Germany $1,000", { name: "SBasinАлександр Басин", standingsSources: [{ name: "Александр Басин" }] }, 52, 876595);
+  if (!textFallbackRow || textFallbackRow.no !== 52) {
+    throw new Error("Final result text fallback matching failed");
+  }
 
   if (cleanPlayerName("Kristen FoxenKristen Foxen", "https://www.wsop.com/players/kristen-foxen/") !== "Kristen Foxen") {
     throw new Error("Repeated player name cleanup failed");
   }
   if (cleanPlayerName("BUPPIEMaurice Hawkins", "https://www.wsop.com/players/maurice-hawkins/") !== "Maurice Hawkins") {
     throw new Error("Badge-prefixed player name cleanup failed");
+  }
+  if (canonicalPlayerName("SBasinАлександр Басин", [{ name: "Александр Басин" }]) !== "Александр Басин") {
+    throw new Error("Standings real-name canonicalization failed");
   }
 
   const summary = parseSummary("Title 2 Bracelets 1 Rings 1 Final Tables 3 Cashes 4 Total Earnings $165,000");
@@ -2198,6 +2388,10 @@ async function main() {
           writeProgressReport(stopRequested ? "interrupted" : "running");
         } catch (error) {
           console.error(`  [오류] [${index + 1}/${playerEntries.length}] 크롤링 최종 실패: ${entry.url} - ${error.message}`);
+          if (isBrowserClosedError(error)) {
+            stopRequested = true;
+            interruptedReason = "Browser closed before the crawler finished";
+          }
           players[index] = {
             name: entry.url,
             url: entry.url,
@@ -2206,7 +2400,7 @@ async function main() {
             events: [],
             calculated: {},
             comparisons: [],
-            warnings: [`크롤링 에러: ${error.message}`],
+            warnings: [`Crawl error: ${error.message}`],
             defects: [],
             status: "fail",
             error: error.message
@@ -2238,7 +2432,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  if (/Target page, context or browser has been closed/i.test(error.message)) {
+  if (isBrowserClosedError(error)) {
     console.error("The browser closed before the crawler finished. Keep the browser window open until the report is generated, and rerun the BAT file.");
     console.error("If this happens without closing the browser manually, rerun after the wrapper installs Playwright Chromium or pass --browser-channel none.");
   }
