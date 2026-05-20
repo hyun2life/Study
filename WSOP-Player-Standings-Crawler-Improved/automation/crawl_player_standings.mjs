@@ -365,6 +365,8 @@ function normalizeEvent(row) {
     earnings: parseMoney(earningSource),
     resultUrl: row.resultUrl,
     hasResultControl: row.hasResultControl,
+    resultUnavailable: Boolean(row.resultUnavailable),
+    resultUnavailableReason: row.resultUnavailableReason || "",
     rowText: row.text,
     cells: row.cells,
     resultPage: null
@@ -730,6 +732,19 @@ async function extractEventRows(page) {
       return /\$[\d,]+/.test(text) || /\b(result|place|rank|finish|event|bracelet|ring|circuit|wsop)\b/i.test(text);
     }
 
+    function isDisabledControl(element) {
+      const disabledClassPattern = /(?:^|[\s_-])(disabled|disable|inactive|unavailable|locked)(?:$|[\s_-])/i;
+      const closestDisabled = element.closest("[disabled], [aria-disabled='true'], .disabled, .is-disabled, .inactive, .unavailable, .locked");
+      const className = typeof element.className === "string" ? element.className : "";
+      const style = window.getComputedStyle(element);
+      return Boolean(element.disabled)
+        || element.getAttribute("aria-disabled") === "true"
+        || element.getAttribute("disabled") !== null
+        || disabledClassPattern.test(className)
+        || Boolean(closestDisabled)
+        || style.pointerEvents === "none";
+    }
+
     for (const table of Array.from(document.querySelectorAll("table"))) {
       const headers = headersForTable(table);
       const tableRows = Array.from(table.querySelectorAll("tbody tr")).length
@@ -742,12 +757,20 @@ async function extractEventRows(page) {
         if (!cells.length || !looksLikeEventRow(text)) continue;
 
         row.setAttribute("data-wsop-crawler-row", String(rowIndex));
-        const links = Array.from(row.querySelectorAll("a[href]")).map((anchor) => ({
-          href: anchor.href,
-          text: normalize(anchor.textContent)
-        }));
-        const resultLink = links.find((link) => /result/i.test(`${link.text} ${link.href}`));
-        const resultControl = row.querySelector("a[href], button");
+        const resultControls = Array.from(row.querySelectorAll("a[href], button, [role='button']")).map((element) => ({
+          element,
+          href: element.href || "",
+          text: normalize([
+            element.textContent,
+            element.getAttribute("aria-label"),
+            element.getAttribute("title"),
+            element.href || ""
+          ].filter(Boolean).join(" ")),
+          disabled: isDisabledControl(element)
+        })).filter((control) => /result/i.test(control.text));
+        const enabledResultControls = resultControls.filter((control) => !control.disabled);
+        const resultLink = enabledResultControls.find((control) => control.href);
+        const hasDisabledResultControl = resultControls.some((control) => control.disabled);
 
         rows.push({
           rowIndex,
@@ -755,8 +778,11 @@ async function extractEventRows(page) {
           cells,
           headers,
           resultUrl: resultLink?.href || null,
-          hasResultControl: Boolean(resultLink || Array.from(row.querySelectorAll("button, a")).some((element) => /result/i.test(normalize(element.textContent))))
-            || Boolean(resultControl && /result/i.test(normalize(resultControl.textContent)))
+          hasResultControl: enabledResultControls.length > 0,
+          resultUnavailable: enabledResultControls.length === 0 && hasDisabledResultControl,
+          resultUnavailableReason: enabledResultControls.length === 0 && hasDisabledResultControl
+            ? "Result 버튼/링크가 비활성화되어 아직 검증 가능한 Result 페이지가 아닙니다."
+            : ""
         });
         rowIndex += 1;
       }
@@ -770,7 +796,7 @@ async function extractEventRows(page) {
     .filter((event) => {
       const eventName = normalizeText(event.eventName);
       const hasEventShape = event.cells.length >= 3 && eventName && !/^series\s*\/?\s*events?$/i.test(eventName);
-      return hasEventShape || event.rank !== null || event.earnings !== null || event.hasResultControl;
+      return hasEventShape || event.rank !== null || event.earnings !== null || event.hasResultControl || event.resultUnavailable;
     });
 }
 
@@ -1482,6 +1508,11 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
 
     player.comparisons = compareSummary(player.summary, player.calculated);
 
+    const unavailableResultEvents = events.filter((event) => event.resultUnavailable);
+    for (const event of unavailableResultEvents) {
+      event.resultSkipped = event.resultUnavailableReason || "Result 버튼/링크가 비활성화되어 검증을 건너뜀";
+    }
+
     const checkableResultEvents = events.filter((event) => event.resultUrl || event.hasResultControl);
     const rankEligibleResultEvents = [];
     const rankSkippedResultEvents = [];
@@ -1507,6 +1538,9 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     }
     if (rankSkippedResultEvents.length) {
       warnings.push(`선수 순위 제한(${resultRankLimit})으로 인해 결과 확인 ${rankSkippedResultEvents.length}건이 건너뛰어졌습니다.`);
+    }
+    if (unavailableResultEvents.length) {
+      warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건은 아직 검증 가능한 페이지가 아니어서 건너뛰었습니다.`);
     }
 
     if (events.some((event) => event.hasResultControl && !event.resultUrl)) {
@@ -2220,6 +2254,19 @@ function runSelfTest() {
     normalizeEvent({ rowIndex: 2, text: "WSOP #9 $10,000 Result", cells: ["WSOP", "#9", "$10,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/3", hasResultControl: true }),
     normalizeEvent({ rowIndex: 3, text: "WSOP #10 $5,000 Result", cells: ["WSOP", "#10", "$5,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/4", hasResultControl: true })
   ];
+  const unavailableResultEvent = normalizeEvent({
+    rowIndex: 4,
+    text: "WSOP Paradise #22 $58,300 Result",
+    cells: ["WSOP Paradise", "#22 / 287", "$58,300", "Result"],
+    headers: ["Event", "Rank", "Earnings", "Result"],
+    resultUrl: null,
+    hasResultControl: false,
+    resultUnavailable: true,
+    resultUnavailableReason: "Result disabled"
+  });
+  if (!unavailableResultEvent.resultUnavailable || unavailableResultEvent.resultUrl || unavailableResultEvent.hasResultControl) {
+    throw new Error("Disabled Result control should be preserved as unavailable, not checkable");
+  }
   const calculated = calculateFromEvents(events);
   const comparisons = compareSummary(summary, calculated);
   if (comparisons.some((item) => item.status !== "pass")) {
