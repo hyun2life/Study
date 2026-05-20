@@ -18,6 +18,55 @@ RUN_WSOP_PLAYER_CRAWLER.bat
 
 처음 실행할 때는 PC 상태에 따라 몇 분 정도 걸릴 수 있습니다. 실행 창은 닫지 말고, 열린 브라우저도 리포트가 생성될 때까지 닫지 마세요.
 
+배포받은 사용자는 보통 BAT 파일만 실행하거나 BAT 상단 설정값만 바꾸면 됩니다. `automation` 폴더 안의 `.mjs`, `.ps1` 파일은 개발자가 수정하는 영역이므로 일반 사용자는 건드리지 않아도 됩니다.
+
+### 처음 실행하는 사람을 위한 순서
+
+1. 압축을 풀거나 저장소를 받은 뒤 폴더 안의 `RUN_WSOP_PLAYER_CRAWLER_LIVE.bat`을 더블클릭합니다.
+2. 크롬 창이 뜨면 닫지 말고 그대로 둡니다. 로그인이나 접근 확인 화면이 보이면 직접 처리합니다.
+3. 검증이 끝나면 `automation\output` 폴더에 리포트가 생성되고, BAT가 한글 리포트를 자동으로 엽니다.
+4. 실패 항목이 있으면 열린 한글 리포트의 `누락:` 내용을 확인합니다.
+5. 중간에 멈추고 싶으면 BAT 창에서 `Ctrl+C`를 누릅니다. 이미 완료된 선수 기준의 부분 리포트는 남습니다.
+
+### 사용자가 주로 수정하는 위치
+
+라이브 검증 기준으로는 `RUN_WSOP_PLAYER_CRAWLER_LIVE.bat` 상단의 아래 부분만 수정하면 됩니다.
+
+```bat
+set "PLAYER_LIMIT=10"
+set "RESULT_LIMIT=0"
+set "RESULT_RANK_LIMIT=0"
+set "MAX_LOAD_MORE=50"
+set "RESULT_PAGE_LIMIT=0"
+set "CONCURRENCY=8"
+```
+
+정합성을 높이고 싶으면 `RESULT_LIMIT=0`, `RESULT_PAGE_LIMIT=0`, `MAX_LOAD_MORE=50` 이상을 유지하는 것을 권장합니다. 빠른 동작 확인만 할 때만 값을 줄이세요.
+
+## 브라우저 표시 여부
+
+기본 BAT는 실제 브라우저 창을 띄워서 실행합니다. 로그인, 접근 확인, 차단 여부를 직접 볼 수 있어서 라이브 검증에는 이 방식이 가장 안전합니다.
+
+```bat
+  -Headed ^
+```
+
+브라우저 창을 띄우지 않고 백그라운드(headless)로 실행하려면 BAT 파일의 PowerShell 실행 옵션에서 위 줄을 제거하면 됩니다.
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CRAWLER_SCRIPT%" ^
+  -PlayersUrl "%PLAYERS_URL%" ^
+  -OutputTag "%OUTPUT_TAG%" ^
+  -RunId "%RUN_ID%" ^
+  -AuthWaitMs 300000 ^
+  -Limit %PLAYER_LIMIT% ^
+  ...
+```
+
+headless 실행에서 로그인/접근 차단 문제가 생기면 다시 `-Headed ^` 줄을 넣고 실행하세요.
+
+배포용으로는 `-Headed ^`를 켜둔 상태를 권장합니다. 사용자는 실제로 페이지가 열리는지, 로그인이 필요한지, 사이트가 막혔는지 눈으로 확인할 수 있기 때문입니다.
+
 ## 자동 준비되는 항목
 
 BAT 파일을 실행하면 `automation\run_player_standings_crawler.ps1`이 아래 항목을 최대한 자동으로 준비합니다.
@@ -67,6 +116,63 @@ set "MAX_LOAD_MORE=3"
 set "RESULT_PAGE_LIMIT=1"
 set "CONCURRENCY=3"
 ```
+
+### 추천 설정 예시
+
+정확도를 우선으로 전체 검증에 가깝게 돌릴 때:
+
+```bat
+set "PLAYER_LIMIT=10"
+set "RESULT_LIMIT=0"
+set "RESULT_RANK_LIMIT=0"
+set "MAX_LOAD_MORE=50"
+set "RESULT_PAGE_LIMIT=0"
+set "CONCURRENCY=8"
+```
+
+이 설정은 시간이 오래 걸릴 수 있지만, 선수 프로필의 Result와 Result 상세 페이지를 최대한 많이 확인합니다.
+
+빠르게 실행 여부만 확인할 때:
+
+```bat
+set "PLAYER_LIMIT=1"
+set "RESULT_LIMIT=1"
+set "RESULT_RANK_LIMIT=0"
+set "MAX_LOAD_MORE=3"
+set "RESULT_PAGE_LIMIT=1"
+set "CONCURRENCY=3"
+```
+
+이 설정은 설치, 브라우저 실행, 리포트 생성 흐름이 정상인지 보는 용도입니다. 실제 정합성 검증용으로는 부족할 수 있습니다.
+
+PC가 느리거나 브라우저 오류가 자주 날 때:
+
+```bat
+set "CONCURRENCY=3"
+```
+
+`CONCURRENCY`는 동시에 검사하는 선수 수입니다. 값을 높이면 빨라질 수 있지만 PC 부하와 브라우저 오류 가능성도 같이 올라갑니다. 오류가 반복되면 3~5 정도로 낮춰서 다시 실행하세요.
+
+Result 페이지가 매우 길어서 시간이 오래 걸릴 때:
+
+```bat
+set "RESULT_PAGE_LIMIT=50"
+```
+
+`0`은 제한 없이 끝까지 확인한다는 뜻입니다. 시간이 너무 오래 걸릴 때만 `50`처럼 충분히 큰 값으로 제한하세요. 단, 제한한 페이지 밖에 대상 순위가 있으면 실패로 나올 수 있습니다.
+
+### 자주 보이는 실패 메시지 해석
+
+리포트의 `누락:` 항목은 아래 의미입니다.
+
+| 항목 | 의미 |
+| --- | --- |
+| `hasFinalResultRows` | Result 상세 페이지에서 최종 결과표 row를 찾지 못했습니다. 페이지 로딩, 접근 차단, 페이지 구조 변경 가능성이 있습니다. |
+| `rankMatches` | standings/profile의 순위와 Result 상세 페이지의 순위가 일치하지 않습니다. |
+| `playerMatches` | 선수명이 일치하지 않습니다. 닉네임/실명 병기, 특수문자, 사이트 표기 차이를 확인해야 합니다. |
+| `earningsMatches` | 상금이 일치하지 않습니다. 달러/유로/파운드 표기나 사이트 원본 값 차이를 확인해야 합니다. |
+
+실패가 나오면 먼저 열린 브라우저에서 해당 `Link`를 직접 확인하고, 실제 페이지에도 같은 값이 보이는지 비교하세요.
 
 ## 검증 범위
 

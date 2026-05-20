@@ -1201,16 +1201,17 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     cachedPages.push({ pageIndex, resultPageNumber, url, title, rows, bodyText });
     searchedPages.push({ pageIndex, url, rows: rows.length });
     const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
-    foundRow = candidates.find((row) => {
+    let pageFoundRow = candidates.find((row) => {
       const nameMatches = resultPlayerMatches(row.player, player);
       const earningsMatches = targetEarnings === null || targetEarnings === undefined || row.earnings === targetEarnings;
       return nameMatches && earningsMatches;
     }) || null;
 
-    if (!foundRow) {
+    if (!pageFoundRow) {
       lastBody = bodyText;
-      foundRow = findResultRowInBodyText(lastBody, player, targetRank, targetEarnings);
+      pageFoundRow = findResultRowInBodyText(lastBody, player, targetRank, targetEarnings);
     }
+    if (pageFoundRow && !foundRow) foundRow = pageFoundRow;
 
     if (foundRow && !inspectEveryPage) break;
     const advance = await advanceResultPage(page, resultPageNumber, targetResultPageNumber, inspectEveryPage);
@@ -1305,16 +1306,17 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
 
       searchedPages.push({ pageIndex, url, rows: rows.length });
       const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
-      foundRow = candidates.find((row) => {
+      let pageFoundRow = candidates.find((row) => {
         const nameMatches = resultPlayerMatches(row.player, player);
         const earningsMatches = targetEarnings === null || targetEarnings === undefined || row.earnings === targetEarnings;
         return nameMatches && earningsMatches;
       }) || null;
 
-      if (!foundRow) {
+      if (!pageFoundRow) {
         lastBody = bodyText;
-        foundRow = findResultRowInBodyText(lastBody, player, targetRank, targetEarnings);
+        pageFoundRow = findResultRowInBodyText(lastBody, player, targetRank, targetEarnings);
       }
+      if (pageFoundRow && !foundRow) foundRow = pageFoundRow;
 
       if (foundRow && !inspectEveryPage) break;
       const advance = await advanceResultPage(page, resultPageNumber, targetResultPageNumber, inspectEveryPage);
