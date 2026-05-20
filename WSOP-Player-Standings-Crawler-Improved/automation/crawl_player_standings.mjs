@@ -28,6 +28,10 @@ const PROFILE_TAB_CHECKS = [
   { key: "finalTables", label: "Final Tables", summaryKey: "finalTables", tabLabels: ["FINAL TABLES", "FINAL TABLE"] }
 ];
 
+const DEFAULT_CONCURRENCY = 5;
+const MAX_CONCURRENCY = 10;
+const DEFAULT_RESULT_PAGE_LIMIT = 0;
+
 // 결과 페이지 캐시 (url -> cachedPages 배열)
 // cachedPages: Array<{ pageIndex, url, title, rows, bodyText }>
 const resultPageRowsCache = new Map();
@@ -54,7 +58,7 @@ function parseArgs(argv) {
     resultLimit: 0,
     resultRankLimit: 0,
     maxLoadMore: 50,
-    resultPageLimit: 30,
+    resultPageLimit: DEFAULT_RESULT_PAGE_LIMIT,
     timeout: 45000,
     browserChannel: null,
     userDataDir: "automation/.auth/wsop-player-crawler-chromium",
@@ -64,7 +68,7 @@ function parseArgs(argv) {
     html: "automation/output/wsop-player-crawler-report.html",
     defects: "automation/output/wsop-player-crawler-defects.csv",
     selfTest: false,
-    concurrency: 3, // 기본 동시 크롤링 개수
+    concurrency: DEFAULT_CONCURRENCY,
     help: false
   };
 
@@ -113,9 +117,9 @@ Options:
   --result-limit <n>        Result pages to crawl per player. Use 0 for every Result. Default: 0
   --result-rank-limit <n>   Skip Result checks when player rank is above this value. Use 0 for no rank cap. Default: 0
   --max-load-more <n>       Max Load more clicks per player All tab. Default: 50
-  --result-page-limit <n>   Max Final Result pages to inspect per result. Default: 30
+  --result-page-limit <n>   Max Final Result pages to inspect per result. Use 0 for every page. Default: ${DEFAULT_RESULT_PAGE_LIMIT}
   --timeout <ms>            Page timeout. Default: 45000
-  --concurrency <n>         Max concurrent player crawls. Default: 3
+  --concurrency <n>         Max concurrent player crawls. Default: ${DEFAULT_CONCURRENCY}, max: ${MAX_CONCURRENCY}
   --browser-channel <name>  Installed browser channel, for example chrome. Use none for Playwright Chromium.
   --user-data-dir <path>    Reusable browser profile. Use none for a temporary profile.
   --auth-wait-ms <ms>       Wait for manual Cloudflare Access login when needed.
@@ -125,6 +129,14 @@ Options:
   --defects <path>          Defect candidate CSV path.
   --self-test               Run local data-model checks without opening a browser.
 `);
+}
+
+function normalizeConcurrency(value) {
+  if (!Number.isFinite(value) || value < 1) {
+    throw new Error(`--concurrency must be a positive number. Recommended range: 1-${MAX_CONCURRENCY}.`);
+  }
+
+  return Math.min(Math.floor(value), MAX_CONCURRENCY);
 }
 
 function normalizeText(value) {
@@ -821,6 +833,67 @@ async function clickNextResultPage(page) {
   return false;
 }
 
+function rankRangeForRows(rows) {
+  const ranks = rows
+    .map((row) => row.no)
+    .filter((rank) => Number.isFinite(rank));
+  if (!ranks.length) return null;
+  return {
+    min: Math.min(...ranks),
+    max: Math.max(...ranks)
+  };
+}
+
+function resultPageInspectionLimit(resultPageLimit) {
+  if (resultPageLimit === 0) return Number.MAX_SAFE_INTEGER;
+  if (!Number.isFinite(resultPageLimit) || resultPageLimit < 0) {
+    throw new Error("--result-page-limit must be 0 or a positive number.");
+  }
+  return Math.floor(resultPageLimit);
+}
+
+function resultPageSignature(url, rows, bodyText) {
+  const range = rankRangeForRows(rows || []);
+  const rangeKey = range ? `${range.min}-${range.max}` : "no-ranks";
+  const rowKey = (rows || [])
+    .slice(0, 5)
+    .map((row) => `${row.no}:${normalizeComparable(row.player)}:${row.earnings ?? ""}`)
+    .join("|");
+  return `${url || "unknown-url"}::${rangeKey}::${rowKey || bodyText.slice(0, 500)}`;
+}
+
+function cachedPagesCoverEvent(cachedPages, event) {
+  const targetRank = event.rank;
+  if (!targetRank) return false;
+
+  return cachedPages.some((cachedPage) => {
+    const range = rankRangeForRows(cachedPage.rows || []);
+    if (!range) return false;
+    return targetRank >= range.min && targetRank <= range.max;
+  });
+}
+
+function mergeCachedResultPages(existingPages = [], incomingPages = []) {
+  const merged = new Map();
+  for (const page of [...existingPages, ...incomingPages]) {
+    const range = rankRangeForRows(page.rows || []);
+    const rangeKey = range ? `${range.min}-${range.max}` : "no-ranks";
+    const key = `${page.url || "unknown-url"}::${page.resultPageNumber || page.pageIndex || "unknown-page"}::${rangeKey}`;
+    merged.set(key, page);
+  }
+  return Array.from(merged.values()).sort((a, b) => {
+    const aRank = rankRangeForRows(a.rows || [])?.min ?? Number.MAX_SAFE_INTEGER;
+    const bRank = rankRangeForRows(b.rows || [])?.min ?? Number.MAX_SAFE_INTEGER;
+    return aRank - bRank;
+  });
+}
+
+function storeResultPageCache(urlKey, cachedPages) {
+  if (!urlKey || !cachedPages?.length) return;
+  const existingPages = resultPageRowsCache.get(urlKey) || [];
+  resultPageRowsCache.set(urlKey, mergeCachedResultPages(existingPages, cachedPages));
+}
+
 // 캐시된 결과 페이지 데이터를 가지고 로컬에서 검증을 수행하는 유틸리티
 function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
   const targetName = normalizeComparable(player.name);
@@ -876,6 +949,11 @@ function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
   const missing = Object.entries(checks)
     .filter(([key, ok]) => !ok && key !== "directPageClicked")
     .map(([key]) => key);
+  const cacheCoversTarget = cachedPagesCoverEvent(cachedPages, event);
+
+  if (missing.length && !cacheCoversTarget) {
+    return null;
+  }
 
   return {
     url: urlKey,
@@ -883,6 +961,8 @@ function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
     status: missing.length ? "fail" : "pass",
     checks,
     missing,
+    cacheHit: true,
+    cacheCoversTarget,
     expectedRow: {
       player: player.name,
       no: targetRank,
@@ -898,22 +978,31 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
   const targetName = normalizeComparable(player.name);
   const targetRank = event.rank;
   const targetEarnings = event.earnings;
-  const visitedUrls = new Set();
+  const pageInspectionLimit = resultPageInspectionLimit(resultPageLimit);
+  const visitedPageSignatures = new Set();
   const searchedPages = [];
+  const cachedPages = [];
   let foundRow = null;
   let directPageClicked = false;
   let lastBody = "";
+  let resultPageNumber = 1;
 
   if (targetRank && targetRank > 50) {
-    directPageClicked = await clickResultPageNumber(page, Math.ceil(targetRank / 50));
+    resultPageNumber = Math.ceil(targetRank / 50);
+    directPageClicked = await clickResultPageNumber(page, resultPageNumber);
   }
 
-  for (let pageIndex = 1; pageIndex <= resultPageLimit; pageIndex += 1) {
+  for (let pageIndex = 1; pageIndex <= pageInspectionLimit; pageIndex += 1) {
     const url = page.url();
-    if (visitedUrls.has(url) && pageIndex > 1) break;
-    visitedUrls.add(url);
 
     const rows = await extractFinalResultRows(page);
+    const title = await page.title().catch(() => "");
+    const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
+    const pageSignature = resultPageSignature(url, rows, bodyText);
+    if (visitedPageSignatures.has(pageSignature)) break;
+    visitedPageSignatures.add(pageSignature);
+
+    cachedPages.push({ pageIndex, resultPageNumber, url, title, rows, bodyText });
     searchedPages.push({ pageIndex, url, rows: rows.length });
     const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
     foundRow = candidates.find((row) => {
@@ -924,7 +1013,7 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     }) || null;
 
     if (!foundRow) {
-      lastBody = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
+      lastBody = bodyText;
       const escapedName = escapeRegExp(normalizeText(player.name));
       const rankNameMatches = targetRank
         ? new RegExp(`(?:^|\\s)${targetRank}\\s+${escapedName}\\b`, "i").test(lastBody)
@@ -946,6 +1035,7 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
 
     if (foundRow) break;
     if (!(await clickNextResultPage(page))) break;
+    resultPageNumber += 1;
   }
 
   const checks = {
@@ -966,6 +1056,7 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     status: missing.length ? "fail" : "pass",
     checks,
     missing,
+    cachedPages,
     expectedRow: {
       player: player.name,
       no: targetRank,
@@ -982,8 +1073,12 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
   
   // 캐시 확인
   if (resultPageRowsCache.has(urlKey)) {
-    console.log(`    [Cache Hit] 결과 페이지 캐시 데이터 사용 (${player.name}): ${urlKey}`);
-    return evaluateResultFromCachedPages(resultPageRowsCache.get(urlKey), player, event, urlKey);
+    const cachedResult = evaluateResultFromCachedPages(resultPageRowsCache.get(urlKey), player, event, urlKey);
+    if (cachedResult) {
+      console.log(`    [Cache Hit] 결과 페이지 캐시 데이터 사용 (${player.name}): ${urlKey}`);
+      return cachedResult;
+    }
+    console.log(`    [Cache Miss] 캐시 범위 밖 Result입니다. 실제 페이지를 확인합니다 (${player.name}): ${urlKey}`);
   }
 
   const page = await context.newPage();
@@ -1000,27 +1095,31 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
     const targetName = normalizeComparable(player.name);
     const targetRank = event.rank;
     const targetEarnings = event.earnings;
-    const visitedUrls = new Set();
+    const pageInspectionLimit = resultPageInspectionLimit(resultPageLimit);
+    const visitedPageSignatures = new Set();
     const searchedPages = [];
     let foundRow = null;
     let directPageClicked = false;
     let lastBody = "";
+    let resultPageNumber = 1;
 
     if (targetRank && targetRank > 50) {
-      directPageClicked = await clickResultPageNumber(page, Math.ceil(targetRank / 50));
+      resultPageNumber = Math.ceil(targetRank / 50);
+      directPageClicked = await clickResultPageNumber(page, resultPageNumber);
     }
 
-    for (let pageIndex = 1; pageIndex <= resultPageLimit; pageIndex += 1) {
+    for (let pageIndex = 1; pageIndex <= pageInspectionLimit; pageIndex += 1) {
       const url = page.url();
-      if (visitedUrls.has(url) && pageIndex > 1) break;
-      visitedUrls.add(url);
 
       const rows = await extractFinalResultRows(page);
       const title = await page.title().catch(() => "");
       const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
+      const pageSignature = resultPageSignature(url, rows, bodyText);
+      if (visitedPageSignatures.has(pageSignature)) break;
+      visitedPageSignatures.add(pageSignature);
 
       // 캐시 페이지 적재
-      cachedPages.push({ pageIndex, url, title, rows, bodyText });
+      cachedPages.push({ pageIndex, resultPageNumber, url, title, rows, bodyText });
 
       searchedPages.push({ pageIndex, url, rows: rows.length });
       const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
@@ -1054,10 +1153,11 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
 
       if (foundRow) break;
       if (!(await clickNextResultPage(page))) break;
+      resultPageNumber += 1;
     }
 
     // 전역 캐시에 저장
-    resultPageRowsCache.set(urlKey, cachedPages);
+    storeResultPageCache(urlKey, cachedPages);
 
     const checks = {
       hasFinalResultRows: searchedPages.some((item) => item.rows > 0) || Boolean(foundRow),
@@ -1121,24 +1221,22 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs, r
       
       // 만약 팝업 URL이 캐시에 있으면 바로 처리하고 팝업 닫기
       if (resultPageRowsCache.has(finalUrl)) {
-        console.log(`    [Cache Hit via Popup] 결과 페이지 캐시 데이터 사용 (${player.name}): ${finalUrl}`);
-        await popup.close().catch(() => {});
-        return evaluateResultFromCachedPages(resultPageRowsCache.get(finalUrl), player, event, finalUrl);
+        const cachedResult = evaluateResultFromCachedPages(resultPageRowsCache.get(finalUrl), player, event, finalUrl);
+        if (cachedResult) {
+          console.log(`    [Cache Hit via Popup] 결과 페이지 캐시 데이터 사용 (${player.name}): ${finalUrl}`);
+          await popup.close().catch(() => {});
+          return cachedResult;
+        }
+        console.log(`    [Cache Miss via Popup] 캐시 범위 밖 Result입니다. 실제 페이지를 확인합니다 (${player.name}): ${finalUrl}`);
       }
 
       await popup.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await waitForAccessLogin(popup, authWaitMs);
       
       // 팝업 페이지 크롤링 및 결과 캐시 적재
-      const cachedPages = [];
       const result = await extractResultPageData(popup, player, event, resultPageLimit);
-      
-      // 간단히 이 팝업 페이지 단일 캐시로 축적 (일단은 rows만 캐시)
-      const rows = await extractFinalResultRows(popup);
-      const title = await popup.title().catch(() => "");
-      const bodyText = normalizeText(await popup.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
-      cachedPages.push({ pageIndex: 1, url: finalUrl, title, rows, bodyText });
-      resultPageRowsCache.set(finalUrl, cachedPages);
+      storeResultPageCache(finalUrl, result.cachedPages);
+      delete result.cachedPages;
 
       await popup.close().catch(() => {});
       return result;
@@ -1149,17 +1247,17 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs, r
     const finalUrl = page.url();
 
     if (resultPageRowsCache.has(finalUrl)) {
-      console.log(`    [Cache Hit via Navigation] 결과 페이지 캐시 데이터 사용 (${player.name}): ${finalUrl}`);
-      return evaluateResultFromCachedPages(resultPageRowsCache.get(finalUrl), player, event, finalUrl);
+      const cachedResult = evaluateResultFromCachedPages(resultPageRowsCache.get(finalUrl), player, event, finalUrl);
+      if (cachedResult) {
+        console.log(`    [Cache Hit via Navigation] 결과 페이지 캐시 데이터 사용 (${player.name}): ${finalUrl}`);
+        return cachedResult;
+      }
+      console.log(`    [Cache Miss via Navigation] 캐시 범위 밖 Result입니다. 실제 페이지를 확인합니다 (${player.name}): ${finalUrl}`);
     }
 
     const result = await extractResultPageData(page, player, event, resultPageLimit);
-    const cachedPages = [];
-    const rows = await extractFinalResultRows(page);
-    const title = await page.title().catch(() => "");
-    const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
-    cachedPages.push({ pageIndex: 1, url: finalUrl, title, rows, bodyText });
-    resultPageRowsCache.set(finalUrl, cachedPages);
+    storeResultPageCache(finalUrl, result.cachedPages);
+    delete result.cachedPages;
 
     return result;
   } catch (error) {
@@ -1960,7 +2058,11 @@ async function main() {
     if (!playerEntries.length) throw new Error(`No player links found at ${args.playersUrl}`);
 
     const players = [];
-    const concurrency = args.concurrency || 3;
+    const requestedConcurrency = args.concurrency;
+    const concurrency = normalizeConcurrency(requestedConcurrency);
+    if (concurrency !== Math.floor(requestedConcurrency)) {
+      console.warn(`  [경고] 동시성 ${requestedConcurrency}은 권장 상한 ${MAX_CONCURRENCY}을 초과하여 ${concurrency}으로 제한합니다.`);
+    }
     const queue = playerEntries.map((entry, index) => ({ entry, index }));
     
     console.log(`[크롤러 시작] 총 ${playerEntries.length}명의 선수를 병렬 크롤링합니다. (동시성: ${concurrency})`);
@@ -1973,7 +2075,7 @@ async function main() {
         try {
           // 개별 크롤러 실행을 백오프 재시도로 안전하게 래핑
           const playerResult = await retryWithBackoff(async () => {
-            return await crawlPlayer(
+            const result = await crawlPlayer(
               context,
               entry.url,
               args.timeout,
@@ -1984,6 +2086,8 @@ async function main() {
               args.resultPageLimit,
               entry.standingsSources
             );
+            if (result.error) throw new Error(result.error);
+            return result;
           }, 2, 2000);
 
           players[index] = playerResult;

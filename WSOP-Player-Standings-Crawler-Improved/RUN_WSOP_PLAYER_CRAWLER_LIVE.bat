@@ -14,13 +14,13 @@ rem PLAYER_LIMIT: players per standings category.
 rem RESULT_LIMIT: Result pages per player. 0 checks every Result.
 rem RESULT_RANK_LIMIT: skip Result checks when rank is above this. 0 means no rank cap.
 rem MAX_LOAD_MORE: profile ALL-tab Load more clicks.
-rem RESULT_PAGE_LIMIT: Final Result pages to inspect per Result.
+rem RESULT_PAGE_LIMIT: Final Result pages to inspect per Result. 0 checks every page.
 set "PLAYER_LIMIT=10"
 set "RESULT_LIMIT=0"
 set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=50"
-set "RESULT_PAGE_LIMIT=30"
-set "CONCURRENCY=10"
+set "RESULT_PAGE_LIMIT=0"
+set "CONCURRENCY=5"
 
 echo ============================================
 echo WSOP LIVE Player Standings Crawler (Improved)

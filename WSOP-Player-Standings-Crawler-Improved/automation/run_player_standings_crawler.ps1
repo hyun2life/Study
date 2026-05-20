@@ -5,7 +5,7 @@ param(
   [int]$ResultLimit = 0,
   [int]$ResultRankLimit = 0,
   [int]$MaxLoadMore = 50,
-  [int]$ResultPageLimit = 30,
+  [int]$ResultPageLimit = 0,
   [string]$OutputTag = "wsop-player-crawler",
   [string]$RunId = (Get-Date -Format "yyyyMMdd-HHmmss"),
   [string]$BrowserChannel = "none",
@@ -14,7 +14,7 @@ param(
   [string]$Out = "",
   [string]$HtmlReport = "",
   [string]$DefectReport = "",
-  [int]$Concurrency = 3,
+  [int]$Concurrency = 5,
   [switch]$Headed
 )
 

@@ -40,7 +40,8 @@ set "PLAYER_LIMIT=10"
 set "RESULT_LIMIT=0"
 set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=50"
-set "RESULT_PAGE_LIMIT=30"
+set "RESULT_PAGE_LIMIT=0"
+set "CONCURRENCY=5"
 ```
 
 각 값의 의미는 아래와 같습니다.
@@ -51,7 +52,8 @@ set "RESULT_PAGE_LIMIT=30"
 | `RESULT_LIMIT` | 선수 1명당 확인할 `Result` 항목 수입니다. `0`이면 가능한 모든 Result를 확인합니다. | 가능한 모든 Result를 확인합니다. |
 | `RESULT_RANK_LIMIT` | Result에서 플레이어 순위가 이 값보다 크면 해당 Result 확인을 건너뜁니다. `0`이면 순위 제한이 없습니다. | 순위 제한 없이 확인합니다. |
 | `MAX_LOAD_MORE` | 선수 프로필의 ALL 탭에서 `Load more` 버튼을 최대 몇 번 누를지 정합니다. | 선수 1명당 최대 50번까지 더 불러옵니다. |
-| `RESULT_PAGE_LIMIT` | Result 상세 페이지에서 최종 순위표 페이지를 최대 몇 페이지까지 확인할지 정합니다. | Result마다 최대 30페이지까지 확인합니다. |
+| `RESULT_PAGE_LIMIT` | Result 상세 페이지에서 최종 순위표 페이지를 최대 몇 페이지까지 확인할지 정합니다. `0`이면 마지막 페이지까지 확인합니다. | Result마다 제한 없이 확인합니다. |
+| `CONCURRENCY` | 동시에 크롤링할 선수 수입니다. 기본값은 정합성과 안정성을 우선한 `5`이며, 코드는 최대 `10`까지 허용합니다. | 선수 5명을 병렬로 확인합니다. |
 
 현재 기본값은 실제 QA 검증용입니다. 빠른 스모크 테스트만 하려면 예를 들어 아래처럼 줄일 수 있습니다.
 
@@ -61,6 +63,7 @@ set "RESULT_LIMIT=1"
 set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=3"
 set "RESULT_PAGE_LIMIT=1"
+set "CONCURRENCY=3"
 ```
 
 ## 검증 범위
