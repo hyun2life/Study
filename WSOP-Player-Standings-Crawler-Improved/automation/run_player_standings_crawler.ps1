@@ -6,6 +6,8 @@ param(
   [int]$ResultRankLimit = 0,
   [int]$MaxLoadMore = 50,
   [int]$ResultPageLimit = 0,
+  [ValidateSet("skip", "fail", "check")]
+  [string]$DisabledResultMode = "skip",
   [string]$OutputTag = "wsop-player-crawler",
   [string]$RunId = (Get-Date -Format "yyyyMMdd-HHmmss"),
   [string]$BrowserChannel = "none",
@@ -240,6 +242,7 @@ try {
     "--result-rank-limit", $ResultRankLimit,
     "--max-load-more", $MaxLoadMore,
     "--result-page-limit", $ResultPageLimit,
+    "--disabled-result-mode", $DisabledResultMode,
     "--browser-channel", $BrowserChannel,
     "--user-data-dir", $UserDataDir,
     "--auth-wait-ms", $AuthWaitMs,

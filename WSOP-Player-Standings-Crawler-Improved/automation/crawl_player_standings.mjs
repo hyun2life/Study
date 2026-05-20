@@ -31,6 +31,7 @@ const PROFILE_TAB_CHECKS = [
 const DEFAULT_CONCURRENCY = 5;
 const MAX_CONCURRENCY = 10;
 const DEFAULT_RESULT_PAGE_LIMIT = 0;
+const DISABLED_RESULT_MODES = new Set(["skip", "fail", "check"]);
 
 // 결과 페이지 캐시 (url -> cachedPages 배열)
 // cachedPages: Array<{ pageIndex, url, title, rows, bodyText }>
@@ -59,6 +60,7 @@ function parseArgs(argv) {
     resultRankLimit: 0,
     maxLoadMore: 50,
     resultPageLimit: DEFAULT_RESULT_PAGE_LIMIT,
+    disabledResultMode: "skip",
     timeout: 45000,
     browserChannel: null,
     userDataDir: "automation/.auth/wsop-player-crawler-chromium",
@@ -82,6 +84,7 @@ function parseArgs(argv) {
     else if (arg === "--result-rank-limit") args.resultRankLimit = Number(argv[++i]);
     else if (arg === "--max-load-more") args.maxLoadMore = Number(argv[++i]);
     else if (arg === "--result-page-limit") args.resultPageLimit = Number(argv[++i]);
+    else if (arg === "--disabled-result-mode") args.disabledResultMode = String(argv[++i] || "").toLowerCase();
     else if (arg === "--timeout") args.timeout = Number(argv[++i]);
     else if (arg === "--concurrency") args.concurrency = Number(argv[++i]);
     else if (arg === "--browser-channel") {
@@ -118,6 +121,8 @@ Options:
   --result-rank-limit <n>   Skip Result checks when player rank is above this value. Use 0 for no rank cap. Default: 0
   --max-load-more <n>       Max Load more clicks per player All tab. Default: 50
   --result-page-limit <n>   Max Final Result pages to inspect per result. Use 0 for every page. Default: ${DEFAULT_RESULT_PAGE_LIMIT}
+  --disabled-result-mode <skip|fail|check>
+                            How to handle disabled Result controls. skip: ignore as unavailable, fail: report as defect, check: open disabled href if present. Default: skip
   --timeout <ms>            Page timeout. Default: 45000
   --concurrency <n>         Max concurrent player crawls. Default: ${DEFAULT_CONCURRENCY}, max: ${MAX_CONCURRENCY}
   --browser-channel <name>  Installed browser channel, for example chrome. Use none for Playwright Chromium.
@@ -145,6 +150,14 @@ function normalizeText(value) {
 
 function normalizeComparable(value) {
   return normalizeText(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function normalizeDisabledResultMode(value) {
+  const mode = String(value || "skip").toLowerCase();
+  if (!DISABLED_RESULT_MODES.has(mode)) {
+    throw new Error("--disabled-result-mode must be one of: skip, fail, check.");
+  }
+  return mode;
 }
 
 function comparableNameCandidates(value) {
@@ -364,6 +377,7 @@ function normalizeEvent(row) {
     entries: parseEntries(rankSource),
     earnings: parseMoney(earningSource),
     resultUrl: row.resultUrl,
+    disabledResultUrl: row.disabledResultUrl || null,
     hasResultControl: row.hasResultControl,
     resultUnavailable: Boolean(row.resultUnavailable),
     resultUnavailableReason: row.resultUnavailableReason || "",
@@ -770,6 +784,7 @@ async function extractEventRows(page) {
         })).filter((control) => /result/i.test(control.text));
         const enabledResultControls = resultControls.filter((control) => !control.disabled);
         const resultLink = enabledResultControls.find((control) => control.href);
+        const disabledResultLink = resultControls.find((control) => control.disabled && control.href);
         const hasDisabledResultControl = resultControls.some((control) => control.disabled);
 
         rows.push({
@@ -778,6 +793,7 @@ async function extractEventRows(page) {
           cells,
           headers,
           resultUrl: resultLink?.href || null,
+          disabledResultUrl: disabledResultLink?.href || null,
           hasResultControl: enabledResultControls.length > 0,
           resultUnavailable: enabledResultControls.length === 0 && hasDisabledResultControl,
           resultUnavailableReason: enabledResultControls.length === 0 && hasDisabledResultControl
@@ -1462,7 +1478,7 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs, r
   }
 }
 
-async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, authWaitMs, maxLoadMore, resultPageLimit, standingsSources = []) {
+async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, authWaitMs, maxLoadMore, resultPageLimit, disabledResultMode, standingsSources = []) {
   const page = await context.newPage();
   const warnings = [];
   try {
@@ -1510,10 +1526,22 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
 
     const unavailableResultEvents = events.filter((event) => event.resultUnavailable);
     for (const event of unavailableResultEvents) {
-      event.resultSkipped = event.resultUnavailableReason || "Result 버튼/링크가 비활성화되어 검증을 건너뜀";
+      if (disabledResultMode === "fail") {
+        event.resultPage = {
+          url: event.disabledResultUrl || event.resultUrl || player.url,
+          status: "fail",
+          error: event.resultUnavailableReason || "Result 버튼/링크가 비활성화되어 검증할 수 없습니다.",
+          checks: { resultControlEnabled: false },
+          missing: ["resultControlEnabled"]
+        };
+      } else if (disabledResultMode === "check" && event.disabledResultUrl) {
+        event.resultUrl = event.disabledResultUrl;
+      } else {
+        event.resultSkipped = event.resultUnavailableReason || "Result 버튼/링크가 비활성화되어 검증을 건너뜀";
+      }
     }
 
-    const checkableResultEvents = events.filter((event) => event.resultUrl || event.hasResultControl);
+    const checkableResultEvents = events.filter((event) => !event.resultPage && (event.resultUrl || event.hasResultControl));
     const rankEligibleResultEvents = [];
     const rankSkippedResultEvents = [];
 
@@ -1540,7 +1568,14 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
       warnings.push(`선수 순위 제한(${resultRankLimit})으로 인해 결과 확인 ${rankSkippedResultEvents.length}건이 건너뛰어졌습니다.`);
     }
     if (unavailableResultEvents.length) {
-      warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건은 아직 검증 가능한 페이지가 아니어서 건너뛰었습니다.`);
+      if (disabledResultMode === "fail") {
+        warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건을 결함으로 기록했습니다.`);
+      } else if (disabledResultMode === "check") {
+        const checkableDisabledCount = unavailableResultEvents.filter((event) => event.disabledResultUrl).length;
+        warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건 중 URL이 있는 ${checkableDisabledCount}건은 직접 접근으로 검증합니다.`);
+      } else {
+        warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건은 아직 검증 가능한 페이지가 아니어서 건너뛰었습니다.`);
+      }
     }
 
     if (events.some((event) => event.hasResultControl && !event.resultUrl)) {
@@ -2210,12 +2245,15 @@ function writeReportArtifacts(args, report) {
 }
 
 function runSelfTest() {
-  const parsedArgs = parseArgs(["--result-rank-limit", "50", "--concurrency", "5"]);
+  const parsedArgs = parseArgs(["--result-rank-limit", "50", "--concurrency", "5", "--disabled-result-mode", "fail"]);
   if (parsedArgs.resultRankLimit !== 50) {
     throw new Error("Result rank limit argument parsing failed");
   }
   if (parsedArgs.concurrency !== 5) {
     throw new Error("Concurrency argument parsing failed");
+  }
+  if (normalizeDisabledResultMode(parsedArgs.disabledResultMode) !== "fail") {
+    throw new Error("Disabled Result mode argument parsing failed");
   }
   if (resultPageInspectionLimit(0) !== Number.MAX_SAFE_INTEGER || !shouldInspectEveryResultPage(0)) {
     throw new Error("Result page limit 0 should inspect every page");
@@ -2316,6 +2354,7 @@ async function main() {
     runSelfTest();
     return;
   }
+  args.disabledResultMode = normalizeDisabledResultMode(args.disabledResultMode);
 
   const { chromium } = await import("playwright");
   const launchOptions = { headless: !args.headed };
@@ -2426,6 +2465,7 @@ async function main() {
               authWaitMs,
               args.maxLoadMore,
               args.resultPageLimit,
+              args.disabledResultMode,
               entry.standingsSources
             );
             if (result.error) throw new Error(result.error);

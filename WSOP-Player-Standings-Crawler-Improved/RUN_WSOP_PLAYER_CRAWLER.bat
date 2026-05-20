@@ -15,11 +15,13 @@ rem RESULT_LIMIT: Result pages per player. 0 checks every Result.
 rem RESULT_RANK_LIMIT: skip Result checks when rank is above this. 0 means no rank cap.
 rem MAX_LOAD_MORE: profile ALL-tab Load more clicks.
 rem RESULT_PAGE_LIMIT: Final Result pages to inspect per Result. 0 checks every page.
+rem DISABLED_RESULT_MODE: skip, fail, or check disabled Result controls.
 set "PLAYER_LIMIT=10"
 set "RESULT_LIMIT=0"
 set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=50"
 set "RESULT_PAGE_LIMIT=0"
+set "DISABLED_RESULT_MODE=skip"
 set "CONCURRENCY=8"
 
 echo ============================================
@@ -44,6 +46,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%CRAWLER_SCRIPT%" ^
   -ResultRankLimit %RESULT_RANK_LIMIT% ^
   -MaxLoadMore %MAX_LOAD_MORE% ^
   -ResultPageLimit %RESULT_PAGE_LIMIT% ^
+  -DisabledResultMode "%DISABLED_RESULT_MODE%" ^
   -Concurrency %CONCURRENCY%
 set EXIT_CODE=%ERRORLEVEL%
 

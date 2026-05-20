@@ -38,6 +38,7 @@ set "RESULT_LIMIT=0"
 set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=50"
 set "RESULT_PAGE_LIMIT=0"
+set "DISABLED_RESULT_MODE=skip"
 set "CONCURRENCY=8"
 ```
 
@@ -90,6 +91,7 @@ set "RESULT_LIMIT=0"
 set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=50"
 set "RESULT_PAGE_LIMIT=0"
+set "DISABLED_RESULT_MODE=skip"
 set "CONCURRENCY=8"
 ```
 
@@ -102,9 +104,10 @@ set "CONCURRENCY=8"
 | `RESULT_RANK_LIMIT` | Result에서 플레이어 순위가 이 값보다 크면 해당 Result 확인을 건너뜁니다. `0`이면 순위 제한이 없습니다. | 순위 제한 없이 확인합니다. |
 | `MAX_LOAD_MORE` | 선수 프로필의 ALL 탭에서 `Load more` 버튼을 최대 몇 번 누를지 정합니다. | 선수 1명당 최대 50번까지 더 불러옵니다. |
 | `RESULT_PAGE_LIMIT` | Result 상세 페이지에서 최종 순위표 페이지를 최대 몇 페이지까지 확인할지 정합니다. `0`이면 대상 row를 찾은 뒤에도 마지막 페이지까지 모두 확인하고, 양수이면 해당 페이지 수까지만 확인합니다. | Result마다 제한 없이 끝까지 확인합니다. |
+| `DISABLED_RESULT_MODE` | 비활성화된 Result 버튼/링크를 어떻게 처리할지 정합니다. `skip`, `fail`, `check` 중 하나입니다. | `skip`이므로 비활성 Result는 아직 검증 불가로 보고 실패에서 제외합니다. |
 | `CONCURRENCY` | 동시에 크롤링할 선수 수입니다. BAT에서 조절하는 실행 튜닝값이며, 코드는 최대 `10`까지 허용합니다. | 선수 8명을 병렬로 확인합니다. |
 
-정합성을 최우선으로 볼 때는 `RESULT_PAGE_LIMIT=0`을 권장합니다. 실행 시간을 제한해야 하면 `50`처럼 충분히 큰 양수로 두면 최대 50페이지까지만 확인합니다.
+정합성을 최우선으로 볼 때는 `RESULT_PAGE_LIMIT=0`을 권장합니다. 실행 시간을 제한해야 하면 `50`처럼 충분히 큰 양수로 두면 최대 50페이지까지만 확인합니다. 비활성 Result 버튼 자체를 결함으로 봐야 하는 검증에서는 `DISABLED_RESULT_MODE=fail`로 바꾸세요.
 
 현재 기본값은 실제 QA 검증용입니다. 빠른 스모크 테스트만 하려면 예를 들어 아래처럼 줄일 수 있습니다.
 
@@ -114,6 +117,7 @@ set "RESULT_LIMIT=1"
 set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=3"
 set "RESULT_PAGE_LIMIT=1"
+set "DISABLED_RESULT_MODE=skip"
 set "CONCURRENCY=3"
 ```
 
@@ -127,6 +131,7 @@ set "RESULT_LIMIT=0"
 set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=50"
 set "RESULT_PAGE_LIMIT=0"
+set "DISABLED_RESULT_MODE=skip"
 set "CONCURRENCY=8"
 ```
 
@@ -140,6 +145,7 @@ set "RESULT_LIMIT=1"
 set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=3"
 set "RESULT_PAGE_LIMIT=1"
+set "DISABLED_RESULT_MODE=skip"
 set "CONCURRENCY=3"
 ```
 
@@ -161,6 +167,20 @@ set "RESULT_PAGE_LIMIT=50"
 
 `0`은 제한 없이 끝까지 확인한다는 뜻입니다. 시간이 너무 오래 걸릴 때만 `50`처럼 충분히 큰 값으로 제한하세요. 단, 제한한 페이지 밖에 대상 순위가 있으면 실패로 나올 수 있습니다.
 
+비활성 Result 버튼/링크를 결함으로 잡고 싶을 때:
+
+```bat
+set "DISABLED_RESULT_MODE=fail"
+```
+
+모드별 의미는 아래와 같습니다.
+
+| 모드 | 동작 |
+| --- | --- |
+| `skip` | 비활성 Result는 아직 검증 가능한 페이지가 아니라고 보고 실패에서 제외합니다. |
+| `fail` | 비활성 Result 자체를 결함으로 보고 리포트에 실패로 기록합니다. |
+| `check` | 비활성 상태여도 href가 있으면 해당 URL에 직접 접근해 Result 페이지 검증을 시도합니다. |
+
 ### 자주 보이는 실패 메시지 해석
 
 리포트의 `누락:` 항목은 아래 의미입니다.
@@ -171,6 +191,7 @@ set "RESULT_PAGE_LIMIT=50"
 | `rankMatches` | standings/profile의 순위와 Result 상세 페이지의 순위가 일치하지 않습니다. |
 | `playerMatches` | 선수명이 일치하지 않습니다. 닉네임/실명 병기, 특수문자, 사이트 표기 차이를 확인해야 합니다. |
 | `earningsMatches` | 상금이 일치하지 않습니다. 달러/유로/파운드 표기나 사이트 원본 값 차이를 확인해야 합니다. |
+| `resultControlEnabled` | `DISABLED_RESULT_MODE=fail`일 때 비활성 Result 버튼/링크를 결함으로 기록한 항목입니다. |
 
 실패가 나오면 먼저 열린 브라우저에서 해당 `Link`를 직접 확인하고, 실제 페이지에도 같은 값이 보이는지 비교하세요.
 
