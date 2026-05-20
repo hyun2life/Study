@@ -1328,6 +1328,10 @@ function rankRangeForRows(rows) {
   };
 }
 
+function resultRangeResolvesTargetRank(range, targetRank) {
+  return Boolean(targetRank && range && range.max >= targetRank);
+}
+
 function resultPageInspectionLimit(resultPageLimit) {
   if (resultPageLimit === 0) return Number.MAX_SAFE_INTEGER;
   if (!Number.isFinite(resultPageLimit) || resultPageLimit < 0) {
@@ -1529,6 +1533,7 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     previousRange = range || previousRange;
 
     if (foundRow) break;
+    if (resultRangeResolvesTargetRank(range, targetRank)) break;
     const pendingPageNumber = pendingResultPageNumbers.shift();
     if (pendingPageNumber && pendingPageNumber !== resultPageNumber && await clickResultPageNumber(page, pendingPageNumber)) {
       directPageClicked = true;
@@ -1660,6 +1665,7 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
       previousRange = range || previousRange;
 
       if (foundRow) break;
+      if (resultRangeResolvesTargetRank(range, targetRank)) break;
       const pendingPageNumber = pendingResultPageNumbers.shift();
       if (pendingPageNumber && pendingPageNumber !== resultPageNumber && await clickResultPageNumber(page, pendingPageNumber)) {
         directPageClicked = true;
@@ -2581,6 +2587,9 @@ function runSelfTest() {
   }
   if (resultPageNumberForRank(50) !== 2 || resultPageNumberForRank(100) !== 3 || resultPageNumberForRangeStart(400) !== 9) {
     throw new Error("Result page number calculation failed");
+  }
+  if (!resultRangeResolvesTargetRank({ min: 400, max: 449 }, 420) || !resultRangeResolvesTargetRank({ min: 450, max: 499 }, 420) || resultRangeResolvesTargetRank({ min: 350, max: 399 }, 420)) {
+    throw new Error("Result target rank early-stop calculation failed");
   }
   if (!resultPlayerNameMatches("Александр Басин Russia", "SBasinАлександр Басин")) {
     throw new Error("Unicode player name matching failed");
