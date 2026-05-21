@@ -530,6 +530,17 @@ function calculateFromEvents(events) {
   };
 }
 
+function subtractEventCountsFromSummary(summary, skippedEvents) {
+  const skipped = calculateFromEvents(skippedEvents || []);
+  const adjusted = { ...summary };
+  for (const key of ["titles", "bracelets", "rings", "finalTables", "cashes", "totalEarnings"]) {
+    if (Number.isFinite(adjusted[key])) {
+      adjusted[key] = Math.max(0, adjusted[key] - (skipped[key] || 0));
+    }
+  }
+  return adjusted;
+}
+
 // 중복 처리는 의도적으로 제한한다. 중복 제거가 프로필 비교 정확도를
 // 높이는 경우에만 사용하고, 그 외에는 원본 row를 유지한다.
 function eventDeduplicationKey(event) {
@@ -708,19 +719,6 @@ function buildDefects(player) {
       actual: formatValue(comparison.label, comparison.calculated),
       url: player.url,
       detail: `${comparison.label}: top=${formatValue(comparison.label, comparison.top)}, calculated=${formatValue(comparison.label, comparison.calculated)}`
-    });
-  }
-
-  for (const consistency of player.tabConsistency || []) {
-    if (consistency.status !== "fail") continue;
-    defects.push({
-      type: "Profile tab vs ALL mismatch",
-      player: player.name,
-      item: consistency.label,
-      expected: formatValue(consistency.label, consistency.allCalculated),
-      actual: consistency.selectedTab ? formatValue(consistency.label, consistency.tabCalculated) : "Tab not found",
-      url: player.url,
-      detail: consistency.detail
     });
   }
 
@@ -1347,14 +1345,20 @@ async function expandCurrentProfileTabRows(page, expectedRows, maxLoadMore) {
 async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode, skippedComparisonEvents = []) {
   const checks = [];
   const tabEventsByKey = {};
+  const skippedEvents = disabledResultMode === "skip" ? skippedComparisonEvents || [] : [];
 
   for (const tabCheck of PROFILE_TAB_CHECKS) {
     const expected = summary?.[tabCheck.summaryKey];
+    const skippedForTab = skippedEvents.filter((event) => eventContributesToProfileTab(event, tabCheck.key));
+    const skippedKeys = new Set(skippedForTab.map((event) => eventComparisonKey(event)));
+    const skippedCalculated = calculateFromEvents(skippedForTab);
+    const skippedValue = skippedCalculated[tabCheck.summaryKey] || 0;
+    const adjustedExpected = Number.isFinite(expected) ? Math.max(0, expected - skippedValue) : expected;
     const check = {
       key: tabCheck.key,
       label: tabCheck.label,
       summaryKey: tabCheck.summaryKey,
-      expected,
+      expected: adjustedExpected,
       actual: null,
       selectedTab: null,
       status: "warn",
@@ -1369,27 +1373,34 @@ async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResul
     }
 
     if (!check.selectedTab) {
-      check.status = Number.isFinite(expected) && expected > 0 ? "fail" : "warn";
+      check.status = Number.isFinite(adjustedExpected) && adjustedExpected > 0 ? "fail" : "warn";
       check.detail = `Profile tab not found. Tried: ${tabCheck.tabLabels.join(", ")}.`;
       checks.push(check);
       continue;
     }
 
     const { events: tabEvents, expansion } = await expandCurrentProfileTabRows(page, expected, maxLoadMore);
+    const comparableTabEvents = skippedKeys.size
+      ? tabEvents.filter((event) => !skippedKeys.has(eventComparisonKey(event)))
+      : tabEvents;
     tabEventsByKey[tabCheck.key] = tabEvents;
-    check.expected = expected;
-    check.actual = calculateFromEvents(tabEvents)[tabCheck.summaryKey];
-    check.status = Number.isFinite(expected) && expected === check.actual ? "pass" : "fail";
-    check.skipped = 0;
+    check.expected = adjustedExpected;
+    check.actual = calculateFromEvents(comparableTabEvents)[tabCheck.summaryKey];
+    check.status = Number.isFinite(adjustedExpected) && adjustedExpected === check.actual ? "pass" : "fail";
+    check.skipped = skippedForTab.length;
     check.duplicates = 0;
     check.rawRows = tabEvents.length;
+    check.comparableRows = comparableTabEvents.length;
     check.countStrategy = "tab-conditional-count";
     check.originalExpected = expected;
     const detailParts = [
       `${check.selectedTab} tab calculated=${check.actual}`,
       `profile ${tabCheck.label}=${check.expected ?? "-"}`
     ];
+    if (check.originalExpected !== check.expected) detailParts.push(`original=${check.originalExpected ?? "-"}`);
     if (check.rawRows !== check.actual) detailParts.push(`rawRows=${check.rawRows}`);
+    if (check.comparableRows !== check.rawRows) detailParts.push(`comparableRows=${check.comparableRows}`);
+    if (check.skipped) detailParts.push(`disabledResultSkipped=${check.skipped}`);
     detailParts.push(`strategy=${check.countStrategy}`);
     detailParts.push(`loadMoreClicks=${expansion.loadMoreClicks}`);
     detailParts.push(`stopped=${expansion.stoppedReason}`);
@@ -1399,27 +1410,6 @@ async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResul
 
   await selectProfileTab(page, "ALL").catch(() => {});
   return { checks, tabEventsByKey };
-}
-
-// 각 탭의 조건 계산값을 ALL 계산값과 교차 확인한다.
-// 여기서 불일치하면 탭 필터링 또는 row 추출 문제일 가능성이 높다.
-function compareProfileTabsToAll(allCalculated, tabChecks) {
-  return (tabChecks || []).map((tabCheck) => {
-    const allValue = allCalculated?.[tabCheck.summaryKey];
-    const tabValue = tabCheck.actual;
-    const comparable = Number.isFinite(allValue) && Number.isFinite(tabValue);
-    const status = comparable && allValue === tabValue ? "pass" : "fail";
-    return {
-      key: tabCheck.key,
-      label: tabCheck.label,
-      summaryKey: tabCheck.summaryKey,
-      selectedTab: tabCheck.selectedTab,
-      allCalculated: allValue,
-      tabCalculated: tabValue,
-      status,
-      detail: `${tabCheck.selectedTab || "Missing tab"} ${tabCheck.label}=${tabValue ?? "-"}, ALL ${tabCheck.label}=${allValue ?? "-"}, strategy=conditional-count.`
-    };
-  });
 }
 
 // 토너먼트 Result 페이지의 row를 추출한다. 표 파싱을 우선하고,
@@ -1869,25 +1859,39 @@ function resultPagesCoverTargetRank(pages, targetRank) {
     .sort((left, right) => left.minRank - right.minRank);
 
   let sawTargetOrLowerRank = false;
+  let previousMaxRank = null;
+  let previousPageNumber = null;
 
   for (const page of rankedPages) {
+    const pageNumber = Number.isFinite(page.resultPageNumber) ? page.resultPageNumber : null;
+
     if (page.maxRank < targetRank) {
       sawTargetOrLowerRank = true;
+      previousMaxRank = page.maxRank;
+      if (pageNumber !== null) previousPageNumber = pageNumber;
       continue;
     }
 
     if (page.ranks.includes(targetRank)) {
       if (page.maxRank > targetRank) return true;
       sawTargetOrLowerRank = true;
+      previousMaxRank = page.maxRank;
+      if (pageNumber !== null) previousPageNumber = pageNumber;
       continue;
     }
 
     if (page.minRank > targetRank) {
+      if (!sawTargetOrLowerRank || previousMaxRank === null) return false;
+      const rankGap = page.minRank - previousMaxRank - 1;
+      const pageGap = pageNumber !== null && previousPageNumber !== null ? pageNumber - previousPageNumber : 1;
+      if (previousMaxRank < targetRank && (pageGap > 1 || rankGap > RESULT_ROWS_PER_PAGE * 2)) return false;
       return sawTargetOrLowerRank;
     }
 
     if (page.minRank <= targetRank && page.maxRank >= targetRank) {
       sawTargetOrLowerRank = true;
+      previousMaxRank = page.maxRank;
+      if (pageNumber !== null) previousPageNumber = pageNumber;
     }
   }
 
@@ -2123,7 +2127,8 @@ async function extractResultPageData(page, player, event, resultPageLimit, timeo
     if (visitedPageContentSignatures.has(pageContentSignature)) {
       // 같은 시그니처가 반복되면 클릭이 전진하지 않았을 가능성이 크다.
       // pagination 정체로 결론내기 전에 더 강한 전진 경로를 한 번 더 시도한다.
-      const advance = await advanceResultPage(page, resultPageNumber, searchStart.searchStartPageNumber, true);
+      const nextTargetPageNumber = resultPageNumber < searchStart.searchStartPageNumber ? searchStart.searchStartPageNumber : null;
+      const advance = await advanceResultPage(page, resultPageNumber, nextTargetPageNumber, true);
       if (!advance.advanced) break;
       directPageClicked = directPageClicked || advance.directPageClicked;
       resultPageNumber = advance.resultPageNumber;
@@ -2169,7 +2174,8 @@ async function extractResultPageData(page, player, event, resultPageLimit, timeo
       resultPageNumber = pendingPageNumber;
       continue;
     }
-    const advance = await advanceResultPage(page, resultPageNumber, searchStart.searchStartPageNumber, inspectEveryPage);
+    const nextTargetPageNumber = resultPageNumber < searchStart.searchStartPageNumber ? searchStart.searchStartPageNumber : null;
+    const advance = await advanceResultPage(page, resultPageNumber, nextTargetPageNumber, inspectEveryPage);
     if (!advance.advanced) break;
     directPageClicked = directPageClicked || advance.directPageClicked;
     resultPageNumber = advance.resultPageNumber;
@@ -2267,7 +2273,8 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
       if (visitedPageContentSignatures.has(pageContentSignature)) {
         // 페이지가 바뀌지 않았다면 pagination 정체로 판단하기 전에
         // 다른 전진 경로를 한 번 더 시도한다.
-        const advance = await advanceResultPage(page, resultPageNumber, searchStart.searchStartPageNumber, true);
+        const nextTargetPageNumber = resultPageNumber < searchStart.searchStartPageNumber ? searchStart.searchStartPageNumber : null;
+        const advance = await advanceResultPage(page, resultPageNumber, nextTargetPageNumber, true);
         if (!advance.advanced) break;
         directPageClicked = directPageClicked || advance.directPageClicked;
         resultPageNumber = advance.resultPageNumber;
@@ -2315,7 +2322,8 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
         resultPageNumber = pendingPageNumber;
         continue;
       }
-      const advance = await advanceResultPage(page, resultPageNumber, searchStart.searchStartPageNumber, inspectEveryPage);
+      const nextTargetPageNumber = resultPageNumber < searchStart.searchStartPageNumber ? searchStart.searchStartPageNumber : null;
+      const advance = await advanceResultPage(page, resultPageNumber, nextTargetPageNumber, inspectEveryPage);
       if (!advance.advanced) break;
       directPageClicked = directPageClicked || advance.directPageClicked;
       resultPageNumber = advance.resultPageNumber;
@@ -2469,14 +2477,16 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     }
     const unavailableResultEvents = profileComparisonEvents.filter((event) => event.resultUnavailable);
     const skippedUnavailableResultEvents = disabledResultMode === "skip" ? unavailableResultEvents : [];
-    const summaryForComparison = summary;
-    const comparableEvents = profileComparisonEvents;
+    const skippedUnavailableKeys = new Set(skippedUnavailableResultEvents.map((event) => eventComparisonKey(event)));
+    const summaryForComparison = disabledResultMode === "skip"
+      ? subtractEventCountsFromSummary(summary, skippedUnavailableResultEvents)
+      : summary;
+    const comparableEvents = skippedUnavailableKeys.size
+      ? profileComparisonEvents.filter((event) => !skippedUnavailableKeys.has(eventComparisonKey(event)))
+      : profileComparisonEvents;
     const { checks: tabChecks, tabEventsByKey } = await collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode, skippedUnavailableResultEvents);
     const calculated = calculateFromEvents(comparableEvents);
-    const tabConsistency = compareProfileTabsToAll(calculated, tabChecks);
-    // calculated는 ALL 탭 조건 계산값이다.
-    // tabChecks는 각 지표 탭의 독립 조건 계산값이다.
-    // tabConsistency는 둘 중 하나를 보정값으로 쓰지 않고 두 출처를 서로 비교한다.
+    // Summary는 ALL 탭 수집값으로, 각 탭은 자기 탭 수집값으로 독립 계산한다.
 
     if (!events.length) warnings.push("수집된 이벤트 행이 존재하지 않습니다.");
     if (summary.cashes && events.length < summary.cashes) {
@@ -2498,7 +2508,6 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
       duplicateEvents: duplicateEvents.length,
       comparisonStrategy,
       tabChecks,
-      tabConsistency,
       tabEventsByKey,
       calculated,
       comparisons: [],
@@ -2681,7 +2690,6 @@ function formatKoreanDefectType(type) {
   return {
     "Profile summary mismatch": "프로필 요약 불일치",
     "Profile tab count mismatch": "프로필 탭 개수 불일치",
-    "Profile tab vs ALL mismatch": "프로필 탭/ALL 조건 계산 불일치",
     "Result page mismatch": "Result 페이지 불일치",
     "Result search incomplete": "Result 탐색 미완료",
     "Crawler warning": "크롤러 경고",
@@ -3052,20 +3060,16 @@ function renderReportTemplate(report, isKo) {
                 <h4 style="margin:0 0 10px;">Profile Tabs Integrity</h4>
                 <table style="width:100%;">
                   <thead>
-                    <tr><th>${escapeHtml(t.tabHeader)}</th><th>Label</th><th>Profile Stat</th><th>Tab Calc</th><th>ALL Calc</th><th>Status</th></tr>
+                    <tr><th>${escapeHtml(t.tabHeader)}</th><th>Label</th><th>Profile Stat</th><th>Tab Calc</th><th>Status</th></tr>
                   </thead>
                   <tbody>
-                    ${(player.tabChecks || []).map((item) => {
-                      const consistency = (player.tabConsistency || []).find((entry) => entry.key === item.key);
-                      return `<tr>
+                    ${(player.tabChecks || []).map((item) => `<tr>
                       <td><strong>${escapeHtml(isKo ? formatLabel(item.label) : item.label)}</strong></td>
                       <td><code>${escapeHtml(item.selectedTab || "-")}</code></td>
                       <td>${escapeHtml(formatValue(item.label, item.expected))}</td>
                       <td>${escapeHtml(formatValue(item.label, item.actual))}</td>
-                      <td>${escapeHtml(formatValue(item.label, consistency?.allCalculated))}</td>
                       <td><span class="status-badge ${item.status}">${escapeHtml(isKo ? formatStatus(item.status) : item.status)}</span></td>
-                    </tr>`;
-                    }).join("")}
+                    </tr>`).join("")}
                   </tbody>
                 </table>
               </div>
@@ -3298,6 +3302,9 @@ function runSelfTest() {
   if (resultPagesCoverTargetRank([{ rows: [{ no: 1 }, { no: 100 }] }], 100) || !resultPagesCoverTargetRank([{ rows: [{ no: 1 }, { no: 100 }] }, { rows: [{ no: 101 }] }], 100)) {
     throw new Error("Result coverage should require seeing beyond a sparse or tied target rank");
   }
+  if (resultPagesCoverTargetRank([{ resultPageNumber: 20, rows: [{ no: 952 }, { no: 1001 }] }, { resultPageNumber: 46, rows: [{ no: 2255 }, { no: 2304 }] }], 1077)) {
+    throw new Error("Result coverage should not cross unsearched target rank gaps");
+  }
   if (cachedPagesCoverEvent([{ rows: [{ no: 1 }, { no: 100 }] }], { rank: 100 }) || cachedPagesCoverEvent([{ rows: [{ no: 100 }, { no: 100 }] }], { rank: 100 })) {
     throw new Error("Cached pages ending on tied target rank should not be treated as covering the event");
   }
@@ -3410,14 +3417,10 @@ function runSelfTest() {
   if (comparisons.some((item) => item.status !== "pass")) {
     throw new Error(`Self-test comparison failed: ${JSON.stringify(comparisons)}`);
   }
-  const tabConsistency = compareProfileTabsToAll(calculated, [
-    { key: "titles", label: "Title", summaryKey: "titles", selectedTab: "TITLE", actual: 2 },
-    { key: "bracelets", label: "Bracelets", summaryKey: "bracelets", selectedTab: "BRACELETS", actual: 1 },
-    { key: "rings", label: "Rings", summaryKey: "rings", selectedTab: "RINGS", actual: 1 },
-    { key: "finalTables", label: "Final Tables", summaryKey: "finalTables", selectedTab: "FINAL TABLES", actual: 3 }
-  ]);
-  if (tabConsistency.some((item) => item.status !== "pass")) {
-    throw new Error("Profile tab conditional counts should match ALL conditional counts");
+  const disabledSkippedSummary = subtractEventCountsFromSummary(disabledIncludedSummary, [skippedBraceletWin]);
+  const disabledSkippedComparisons = compareSummary(disabledSkippedSummary, calculateFromEvents([]));
+  if (disabledSkippedComparisons.some((item) => item.status !== "pass")) {
+    throw new Error("Disabled Result skip mode should subtract skipped events from profile comparisons");
   }
   const overflowSplit = splitEventsByExpectedCashes(events, parseSummary("Title 1 Bracelets 1 Rings 0 Final Tables 2 Cashes 2 Total Earnings $150,000"));
   if (overflowSplit.comparisonEvents.length !== 2 || overflowSplit.overflowEvents.length !== 2 || calculateFromEvents(overflowSplit.comparisonEvents).cashes !== 2) {
