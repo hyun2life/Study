@@ -1733,7 +1733,9 @@ function resultRowsResolveTargetRank(rows, targetRank) {
     .map((row) => row.no)
     .filter((rank) => Number.isFinite(rank));
   if (!ranks.length) return false;
-  return ranks.includes(targetRank) || Math.min(...ranks) > targetRank;
+  const minRank = Math.min(...ranks);
+  const maxRank = Math.max(...ranks);
+  return minRank > targetRank || (ranks.includes(targetRank) && maxRank > targetRank);
 }
 
 function targetRankGap(previousRange, currentRange, targetRank) {
@@ -1796,9 +1798,12 @@ function cachedPagesCoverEvent(cachedPages, event) {
   if (!targetRank) return false;
 
   return cachedPages.some((cachedPage) => {
+    const ranks = (cachedPage.rows || [])
+      .map((row) => row.no)
+      .filter((rank) => Number.isFinite(rank));
     const range = rankRangeForRows(cachedPage.rows || []);
     if (!range) return false;
-    return targetRank >= range.min && targetRank <= range.max;
+    return range.min > targetRank || (ranks.includes(targetRank) && range.max > targetRank);
   });
 }
 
@@ -3033,8 +3038,14 @@ function runSelfTest() {
   if (resultRangeResolvesTargetRank({ min: 301, max: 350 }, 353) || !resultRangeResolvesTargetRank({ min: 351, max: 400 }, 353)) {
     throw new Error("Deep result rank range resolution failed");
   }
-  if (resultRowsResolveTargetRank([{ no: 1 }, { no: 928 }], 353) || !resultRowsResolveTargetRank([{ no: 351 }, { no: 352 }, { no: 353 }], 353)) {
+  if (resultRowsResolveTargetRank([{ no: 1 }, { no: 928 }], 353) || resultRowsResolveTargetRank([{ no: 351 }, { no: 352 }, { no: 353 }], 353) || !resultRowsResolveTargetRank([{ no: 351 }, { no: 352 }, { no: 353 }, { no: 354 }], 353)) {
     throw new Error("Sparse result rows should not stop deep-rank pagination early");
+  }
+  if (resultRowsResolveTargetRank([{ no: 1 }, { no: 100 }], 100) || resultRowsResolveTargetRank([{ no: 100 }, { no: 100 }], 100)) {
+    throw new Error("Tied target ranks should continue across result pages");
+  }
+  if (cachedPagesCoverEvent([{ rows: [{ no: 1 }, { no: 100 }] }], { rank: 100 }) || cachedPagesCoverEvent([{ rows: [{ no: 100 }, { no: 100 }] }], { rank: 100 })) {
+    throw new Error("Cached pages ending on tied target rank should not be treated as covering the event");
   }
   const rankGap = targetRankGap({ min: 371, max: 434 }, { min: 500, max: 558 }, 458);
   if (!rankGap || rankGap.start !== 435 || rankGap.end !== 499 || targetRankGap({ min: 371, max: 434 }, { min: 500, max: 558 }, 600)) {
