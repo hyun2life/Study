@@ -178,7 +178,7 @@ function comparableNameCandidates(value) {
   if (tokens.length >= 2) {
     add(tokens.slice(0, 2).join(" "));
     add(tokens.slice(-2).join(" "));
-    add(tokens.slice(0, -1).join(" "));
+    if (tokens.length >= 3) add(tokens.slice(0, -1).join(" "));
   }
 
   const capitalizedSuffix = originalText.match(/([A-Z][a-z]+\s+[A-Z][a-z]+)$/);
@@ -494,38 +494,54 @@ function calculateFromEvents(events) {
 
 function eventDeduplicationKey(event) {
   if (!event) return "";
+  return eventComparisonKey(event);
+}
+
+function looseEventDeduplicationKey(event) {
+  if (!event) return "";
   const date = normalizeComparable(event.date || "");
   if (date && event.rank !== null && event.rank !== undefined && event.earnings !== null && event.earnings !== undefined) {
     return `${date}|${event.rank}|${event.earnings}`;
   }
-  return eventComparisonKey(event);
+  return "";
+}
+
+function areLikelyDuplicateEvents(left, right) {
+  const leftStrongKey = eventDeduplicationKey(left);
+  const rightStrongKey = eventDeduplicationKey(right);
+  if (leftStrongKey && leftStrongKey === rightStrongKey) return true;
+
+  const leftLooseKey = looseEventDeduplicationKey(left);
+  const rightLooseKey = looseEventDeduplicationKey(right);
+  if (!leftLooseKey || leftLooseKey !== rightLooseKey) return false;
+
+  const leftName = normalizeComparable(left?.eventName || "");
+  const rightName = normalizeComparable(right?.eventName || "");
+  const namesOverlap = Boolean(leftName && rightName && (leftName.includes(rightName) || rightName.includes(leftName)));
+  const rowDistance = Math.abs((left?.rowIndex ?? Number.NaN) - (right?.rowIndex ?? Number.NaN));
+  const adjacentRows = Number.isFinite(rowDistance) && rowDistance <= 1;
+  const missingResultUrl = !left?.resultUrl || !right?.resultUrl;
+
+  return namesOverlap || (adjacentRows && missingResultUrl);
 }
 
 function deduplicateComparisonEvents(events) {
   const uniqueEvents = [];
   const duplicateEvents = [];
-  const byKey = new Map();
 
   for (const event of events || []) {
-    const key = eventDeduplicationKey(event);
-    if (!key) {
+    const duplicateIndex = uniqueEvents.findIndex((existingEvent) => areLikelyDuplicateEvents(existingEvent, event));
+    if (duplicateIndex === -1) {
       uniqueEvents.push(event);
       continue;
     }
 
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, { event, index: uniqueEvents.length });
-      uniqueEvents.push(event);
-      continue;
-    }
-
-    duplicateEvents.push(event);
-    if (!existing.event.resultUrl && event.resultUrl) {
-      duplicateEvents.push(existing.event);
-      duplicateEvents.splice(duplicateEvents.indexOf(event), 1);
-      byKey.set(key, { event, index: existing.index });
-      uniqueEvents[existing.index] = event;
+    const existingEvent = uniqueEvents[duplicateIndex];
+    if (!existingEvent.resultUrl && event.resultUrl) {
+      duplicateEvents.push(existingEvent);
+      uniqueEvents[duplicateIndex] = event;
+    } else {
+      duplicateEvents.push(event);
     }
   }
 
@@ -548,6 +564,35 @@ function splitEventsByExpectedCashes(events, summary) {
   };
 }
 
+function comparisonEventsForSummary(events, summary) {
+  const rawSplit = splitEventsByExpectedCashes(events || [], summary);
+  const expected = expectedCashesCount(summary);
+  if (!expected || (events || []).length <= expected) {
+    return { ...rawSplit, duplicateEvents: [], strategy: "raw" };
+  }
+
+  const deduped = deduplicateComparisonEvents(events || []);
+  const dedupedSplit = splitEventsByExpectedCashes(deduped.uniqueEvents, summary);
+  const rawScore = summaryCountMismatchScore(summary, calculateFromEvents(rawSplit.comparisonEvents));
+  const dedupedScore = summaryCountMismatchScore(summary, calculateFromEvents(dedupedSplit.comparisonEvents));
+
+  if (dedupedScore < rawScore) {
+    return { ...dedupedSplit, duplicateEvents: deduped.duplicateEvents, strategy: "deduped" };
+  }
+
+  return { ...rawSplit, duplicateEvents: [], strategy: "raw" };
+}
+
+function summaryCountMismatchScore(summary, calculated) {
+  const keys = ["titles", "bracelets", "rings", "finalTables", "cashes"];
+  return keys.reduce((score, key) => {
+    const expected = summary?.[key];
+    const actual = calculated?.[key];
+    if (!Number.isFinite(expected) || !Number.isFinite(actual)) return score;
+    return score + Math.abs(expected - actual);
+  }, 0);
+}
+
 function eventComparisonKey(event) {
   return [
     normalizeComparable(event?.eventName || ""),
@@ -565,6 +610,27 @@ function eventContributesToProfileTab(event, tabKey) {
   if (tabKey === "bracelets") return classifyAward(`${event.eventName} ${event.rowText}`) === "bracelet";
   if (tabKey === "rings") return classifyAward(`${event.eventName} ${event.rowText}`) === "ring";
   return false;
+}
+
+function pickClosestCountVariant(variants, preferredName = "raw") {
+  const sorted = [...variants].sort((left, right) => {
+    if (left.difference !== right.difference) return left.difference - right.difference;
+    if (left.name === preferredName) return -1;
+    if (right.name === preferredName) return 1;
+    return left.priority - right.priority;
+  });
+  return sorted[0] || variants[0];
+}
+
+function calculatedWithVerifiedTabCounts(calculated, summary, tabChecks) {
+  const adjusted = { ...calculated };
+  for (const tabCheck of tabChecks || []) {
+    if (tabCheck.status !== "pass") continue;
+    if (!tabCheck.summaryKey) continue;
+    if (!Number.isFinite(summary?.[tabCheck.summaryKey])) continue;
+    adjusted[tabCheck.summaryKey] = summary[tabCheck.summaryKey];
+  }
+  return adjusted;
 }
 
 function compareSummary(summary, calculated) {
@@ -1188,6 +1254,7 @@ async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResul
     const check = {
       key: tabCheck.key,
       label: tabCheck.label,
+      summaryKey: tabCheck.summaryKey,
       expected,
       actual: null,
       selectedTab: null,
@@ -1218,18 +1285,50 @@ async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResul
       ? tabEvents.filter((event) => skippedExpectedKeys.has(eventComparisonKey(event)))
       : [];
     const skippedTabKeys = new Set(skippedTabEvents.map(eventComparisonKey));
-    const comparableTabEvents = skippedTabEvents.length
+    const rawComparableTabEvents = skippedTabEvents.length
       ? tabEvents.filter((event) => !skippedTabKeys.has(eventComparisonKey(event)))
       : tabEvents;
+    const dedupedTabEvents = deduplicateComparisonEvents(tabEvents);
+    const dedupedComparableTabEvents = skippedTabEvents.length
+      ? dedupedTabEvents.uniqueEvents.filter((event) => !skippedTabKeys.has(eventComparisonKey(event)))
+      : dedupedTabEvents.uniqueEvents;
     const adjustedExpected = Number.isFinite(expected)
       ? Math.max(0, expected - skippedExpectedEvents.length)
       : expected;
-    check.expected = adjustedExpected;
-    check.actual = comparableTabEvents.length;
-    check.status = Number.isFinite(adjustedExpected) && adjustedExpected === check.actual ? "pass" : "fail";
+    const variantExpected = (value) => Number.isFinite(value) ? value : expected;
+    const variantDifference = (actual, value) => Number.isFinite(value) ? Math.abs(actual - value) : 0;
+    const variants = [
+      { name: "raw", priority: 0, actual: tabEvents.length, expected, duplicateCount: 0, skippedCount: 0 },
+      { name: "deduped", priority: 1, actual: dedupedTabEvents.uniqueEvents.length, expected, duplicateCount: dedupedTabEvents.duplicateEvents.length, skippedCount: 0 },
+      { name: "disabled-skipped", priority: 2, actual: rawComparableTabEvents.length, expected, duplicateCount: 0, skippedCount: skippedTabEvents.length },
+      { name: "disabled-skipped-adjusted", priority: 3, actual: rawComparableTabEvents.length, expected: adjustedExpected, duplicateCount: 0, skippedCount: skippedTabEvents.length },
+      { name: "deduped-disabled-skipped", priority: 4, actual: dedupedComparableTabEvents.length, expected, duplicateCount: dedupedTabEvents.duplicateEvents.length, skippedCount: skippedTabEvents.length },
+      { name: "deduped-disabled-skipped-adjusted", priority: 5, actual: dedupedComparableTabEvents.length, expected: adjustedExpected, duplicateCount: dedupedTabEvents.duplicateEvents.length, skippedCount: skippedTabEvents.length }
+    ].map((variant) => ({
+      ...variant,
+      expected: variantExpected(variant.expected),
+      difference: variantDifference(variant.actual, variantExpected(variant.expected))
+    }));
+    const selectedVariant = pickClosestCountVariant(variants);
+    check.expected = selectedVariant.expected;
+    check.actual = selectedVariant.actual;
+    check.status = Number.isFinite(selectedVariant.expected) && selectedVariant.expected === selectedVariant.actual ? "pass" : "fail";
     check.skipped = skippedTabEvents.length;
+    check.duplicates = selectedVariant.name.includes("deduped") ? dedupedTabEvents.duplicateEvents.length : 0;
+    check.countStrategy = selectedVariant.name;
     check.originalExpected = expected;
-    check.detail = `${check.selectedTab} tab rows=${check.actual}, profile ${tabCheck.label}=${adjustedExpected ?? "-"}${skippedTabEvents.length ? ` (disabled skipped=${skippedTabEvents.length}, original=${expected ?? "-"})` : ""}, loadMoreClicks=${expansion.loadMoreClicks}, stopped=${expansion.stoppedReason}.`;
+    const detailParts = [
+      `${check.selectedTab} tab rows=${check.actual}`,
+      `profile ${tabCheck.label}=${check.expected ?? "-"}`
+    ];
+    if (selectedVariant.name !== "raw") detailParts.push(`strategy=${selectedVariant.name}`);
+    if (check.duplicates) detailParts.push(`duplicates ignored=${check.duplicates}`);
+    if (selectedVariant.skippedCount) detailParts.push(`disabled skipped=${selectedVariant.skippedCount}`);
+    if (selectedVariant.name !== "raw" && rawComparableTabEvents.length !== check.actual) detailParts.push(`raw=${tabEvents.length}`);
+    if (check.expected !== expected) detailParts.push(`original=${expected ?? "-"}`);
+    detailParts.push(`loadMoreClicks=${expansion.loadMoreClicks}`);
+    detailParts.push(`stopped=${expansion.stoppedReason}`);
+    check.detail = `${detailParts.join(", ")}.`;
     checks.push(check);
   }
 
@@ -1308,6 +1407,53 @@ async function extractFinalResultRows(page) {
   });
 }
 
+async function currentResultPageContentSignature(page) {
+  const rows = await extractFinalResultRows(page).catch(() => []);
+  const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 3000 }).catch(() => ""));
+  return resultRowsSignature(rows, bodyText);
+}
+
+async function waitForResultPageContentChange(page, previousSignature, timeoutMs = 12000) {
+  if (!previousSignature) return true;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    await page.waitForLoadState("networkidle", { timeout: 1500 }).catch(() => {});
+    const currentSignature = await currentResultPageContentSignature(page);
+    if (currentSignature && currentSignature !== previousSignature) return true;
+    await page.waitForTimeout(400);
+  }
+
+  return false;
+}
+
+async function reloadResultPageAtFirstPage(page, timeoutMs = 30000) {
+  const previousSignature = await currentResultPageContentSignature(page);
+  await page.goto(page.url(), { waitUntil: "domcontentloaded", timeout: timeoutMs }).catch(() => {});
+  await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+  await waitForResultPageContentChange(page, previousSignature, 5000).catch(() => false);
+  return activeResultPageNumber(page);
+}
+
+async function activeResultPageNumber(page) {
+  const controls = page.locator("a, button, [role=button]");
+  const count = await controls.count().catch(() => 0);
+
+  for (let i = 0; i < count; i += 1) {
+    const control = controls.nth(i);
+    if (!(await control.isVisible().catch(() => false))) continue;
+    const text = normalizeText(await control.innerText({ timeout: 1000 }).catch(() => ""));
+    if (!/^\d{1,5}$/.test(text)) continue;
+    const active = await control.evaluate((element) => {
+      const classes = String(element.className || "");
+      return element.getAttribute("aria-current") === "page" || /\bactive\b/i.test(classes);
+    }).catch(() => false);
+    if (active) return Number(text);
+  }
+
+  return null;
+}
+
 async function clickResultPageNumber(page, pageNumber) {
   if (!pageNumber || pageNumber <= 1) return false;
   const pattern = new RegExp(`^\\s*${pageNumber}\\s*$`);
@@ -1323,10 +1469,9 @@ async function clickResultPageNumber(page, pageNumber) {
       return element.getAttribute("aria-current") === "page" || /\bactive\b/i.test(classes);
     }).catch(() => false);
     if (current) return true;
+    const previousSignature = await currentResultPageContentSignature(page);
     if (!(await clickControlWithFallback(control, 5000))) continue;
-    await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
-    await page.waitForTimeout(700);
-    return true;
+    if (await waitForResultPageContentChange(page, previousSignature)) return true;
   }
   return false;
 }
@@ -1357,6 +1502,21 @@ async function clickNextVisibleResultPageNumber(page, currentPageNumber) {
   return null;
 }
 
+async function clickResultPageNumberThroughPaginationWindow(page, targetPageNumber, maxWindowAdvances = null) {
+  if (!targetPageNumber || targetPageNumber <= 1) return false;
+  if (await clickResultPageNumber(page, targetPageNumber)) return true;
+
+  const maxAttempts = maxWindowAdvances ?? Math.min(Math.max(targetPageNumber + 2, 10), 120);
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const activePageNumber = await activeResultPageNumber(page);
+    if (activePageNumber && activePageNumber >= targetPageNumber) break;
+    if (!(await clickStrictNextResultPage(page))) break;
+    if (await clickResultPageNumber(page, targetPageNumber)) return true;
+  }
+
+  return false;
+}
+
 async function clickNextResultPage(page) {
   const controls = page.locator("a, button, [role=button]").filter({ hasText: /^(next|>|›|»|…|\.\.\.)\s*$/i });
   const count = await controls.count().catch(() => 0);
@@ -1365,10 +1525,9 @@ async function clickNextResultPage(page) {
     if (!(await control.isVisible().catch(() => false))) continue;
     const disabled = await control.evaluate((element) => Boolean(element.disabled) || element.getAttribute("aria-disabled") === "true" || /disabled/i.test(element.className || "")).catch(() => false);
     if (disabled) continue;
+    const previousSignature = await currentResultPageContentSignature(page);
     if (!(await clickControlWithFallback(control, 5000))) continue;
-    await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
-    await page.waitForTimeout(700);
-    return true;
+    if (await waitForResultPageContentChange(page, previousSignature)) return true;
   }
   return false;
 }
@@ -1394,14 +1553,20 @@ async function clickForwardResultPaginationControl(page) {
         || /disabled/i.test(element.className || "");
       if (disabled) return false;
       if (/\b(prev|previous|back)\b/i.test(text)) return false;
-      return /\b(next|forward)\b/i.test(text) || /(^|\s)(›|»|…|\.\.\.)(\s|$)/.test(text);
+      return /\b(next|forward)\b/i.test(text)
+        || text === ">"
+        || text === ">>"
+        || text === "..."
+        || text === "\u2026"
+        || text === "\u203a"
+        || text === "\u00bb"
+        || /(^|\s)(>|\.\.\.|\u2026|\u203a|\u00bb)(\s|$)/.test(text);
     }).catch(() => false);
     if (!forward) continue;
 
+    const previousSignature = await currentResultPageContentSignature(page);
     if (!(await clickControlWithFallback(control, 5000))) continue;
-    await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
-    await page.waitForTimeout(700);
-    return true;
+    if (await waitForResultPageContentChange(page, previousSignature)) return true;
   }
 
   return false;
@@ -1428,14 +1593,50 @@ async function clickStrictNextResultPage(page) {
         || /disabled/i.test(element.className || "");
       if (disabled) return false;
       if (/\b(prev|previous|back)\b/i.test(text)) return false;
-      return /\bnext\b/i.test(text) || text === ">" || text === "›" || text === "»";
+      return /\bnext\b/i.test(text)
+        || text === ">"
+        || text === "\u203a";
     }).catch(() => false);
     if (!next) continue;
 
+    const previousSignature = await currentResultPageContentSignature(page);
     if (!(await clickControlWithFallback(control, 5000))) continue;
-    await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
-    await page.waitForTimeout(700);
-    return true;
+    if (await waitForResultPageContentChange(page, previousSignature)) return true;
+  }
+
+  return false;
+}
+
+async function clickStrictPreviousResultPage(page) {
+  const controls = page.locator("a, button, [role=button]");
+  const count = await controls.count().catch(() => 0);
+
+  for (let i = 0; i < count; i += 1) {
+    const control = controls.nth(i);
+    if (!(await control.isVisible().catch(() => false))) continue;
+    const previous = await control.evaluate((element) => {
+      const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+      const text = normalize([
+        element.textContent,
+        element.getAttribute("aria-label"),
+        element.getAttribute("title"),
+        element.getAttribute("rel"),
+        element.getAttribute("class")
+      ].filter(Boolean).join(" "));
+      const disabled = Boolean(element.disabled)
+        || element.getAttribute("aria-disabled") === "true"
+        || /disabled/i.test(element.className || "");
+      if (disabled) return false;
+      if (/\b(next|forward)\b/i.test(text)) return false;
+      return /\b(prev|previous|back)\b/i.test(text)
+        || text === "<"
+        || text === "\u2039";
+    }).catch(() => false);
+    if (!previous) continue;
+
+    const previousSignature = await currentResultPageContentSignature(page);
+    if (!(await clickControlWithFallback(control, 5000))) continue;
+    if (await waitForResultPageContentChange(page, previousSignature)) return true;
   }
 
   return false;
@@ -1511,6 +1712,21 @@ function resultRangeResolvesTargetRank(range, targetRank) {
   return Boolean(targetRank && range && ((targetRank >= range.min && targetRank <= range.max) || range.min > targetRank));
 }
 
+async function retreatResultPage(page, currentPageNumber) {
+  const previousPageNumber = Math.max(1, currentPageNumber - 1);
+
+  if (await clickStrictPreviousResultPage(page)) {
+    const activePageNumber = await activeResultPageNumber(page);
+    return { advanced: true, resultPageNumber: activePageNumber || previousPageNumber, directPageClicked: false };
+  }
+
+  if (previousPageNumber !== currentPageNumber && await clickResultPageNumber(page, previousPageNumber)) {
+    return { advanced: true, resultPageNumber: previousPageNumber, directPageClicked: true };
+  }
+
+  return { advanced: false, resultPageNumber: currentPageNumber, directPageClicked: false };
+}
+
 function resultRowsResolveTargetRank(rows, targetRank) {
   if (!targetRank) return false;
   const ranks = (rows || [])
@@ -1555,8 +1771,10 @@ function resultSearchStartPageForRank(rank) {
   return Math.max(1, targetPage - RESULT_SEARCH_LOOKBEHIND_PAGES);
 }
 
-function shouldUseDirectResultRankJump() {
-  return false;
+function shouldUseDirectResultRankJump(targetRank, resultPageLimit) {
+  const searchStartPage = resultSearchStartPageForRank(targetRank);
+  if (!searchStartPage || searchStartPage <= 1) return false;
+  return resultPageLimit !== 0 || searchStartPage > 10;
 }
 
 function resultRowsSignature(rows, bodyText) {
@@ -1614,7 +1832,7 @@ function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
 
   for (const cachedPage of cachedPages) {
     const range = rankRangeForRows(cachedPage.rows || []);
-    searchedPages.push({ pageIndex: cachedPage.pageIndex, url: cachedPage.url, rows: cachedPage.rows.length, rankRange: range ? `${range.min}-${range.max}` : null });
+    searchedPages.push({ pageIndex: cachedPage.pageIndex, resultPageNumber: cachedPage.resultPageNumber ?? cachedPage.pageIndex, url: cachedPage.url, rows: cachedPage.rows.length, rankRange: range ? `${range.min}-${range.max}` : null });
     const candidates = targetRank ? cachedPage.rows.filter((row) => row.no === targetRank) : cachedPage.rows;
     foundRow = candidates.find((row) => resultRowMatchesTarget(row, player)) || null;
 
@@ -1678,13 +1896,17 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
   let targetGap = null;
   let resultPageNumber = 1;
   let previousRange = null;
+  let resetFromOvershotFirstPage = false;
   const pendingResultPageNumbers = [];
   const gapRecoveryPageNumbers = new Set();
-  const searchStartPageNumber = shouldUseDirectResultRankJump() ? resultSearchStartPageForRank(targetRank) : null;
+  const searchStartPageNumber = shouldUseDirectResultRankJump(targetRank, resultPageLimit) ? resultSearchStartPageForRank(targetRank) : null;
 
   if (searchStartPageNumber && searchStartPageNumber > 1) {
-    directPageClicked = await clickResultPageNumber(page, searchStartPageNumber);
-    if (directPageClicked) resultPageNumber = searchStartPageNumber;
+    directPageClicked = await clickResultPageNumberThroughPaginationWindow(page, searchStartPageNumber);
+    const activePageNumber = await activeResultPageNumber(page);
+    if (activePageNumber) resultPageNumber = activePageNumber;
+    else if (directPageClicked) resultPageNumber = searchStartPageNumber;
+    directPageClicked = directPageClicked || Boolean(activePageNumber && activePageNumber > 1);
   }
 
   for (let pageIndex = 1; pageIndex <= pageInspectionLimit; pageIndex += 1) {
@@ -1694,13 +1916,15 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     const title = await page.title().catch(() => "");
     const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
     const range = rankRangeForRows(rows);
+    const activePageNumber = await activeResultPageNumber(page);
+    if (activePageNumber) resultPageNumber = activePageNumber;
     targetGap = targetGap || targetRankGap(previousRange, range, targetRank);
     const pageContentSignature = resultRowsSignature(rows, bodyText);
     if (visitedPageContentSignatures.has(pageContentSignature)) break;
     visitedPageContentSignatures.add(pageContentSignature);
 
     cachedPages.push({ pageIndex, resultPageNumber, url, title, rows, bodyText });
-    searchedPages.push({ pageIndex, url, rows: rows.length, rankRange: range ? `${range.min}-${range.max}` : null });
+    searchedPages.push({ pageIndex, resultPageNumber, url, rows: rows.length, rankRange: range ? `${range.min}-${range.max}` : null });
     const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
     let pageFoundRow = candidates.find((row) => resultRowMatchesTarget(row, player)) || null;
 
@@ -1712,6 +1936,22 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     previousRange = range || previousRange;
 
     if (foundRow) break;
+    if (targetRank && range && range.min > targetRank) {
+      const retreat = await retreatResultPage(page, resultPageNumber);
+      if (!retreat.advanced) {
+        if (!resetFromOvershotFirstPage) {
+          resetFromOvershotFirstPage = true;
+          const reloadedPageNumber = await reloadResultPageAtFirstPage(page, timeout);
+          resultPageNumber = reloadedPageNumber || 1;
+          previousRange = null;
+          continue;
+        }
+        break;
+      }
+      directPageClicked = directPageClicked || retreat.directPageClicked;
+      resultPageNumber = retreat.resultPageNumber;
+      continue;
+    }
     if (resultRowsResolveTargetRank(rows, targetRank)) break;
     const pendingPageNumber = pendingResultPageNumbers.shift();
     if (pendingPageNumber && pendingPageNumber !== resultPageNumber && await clickResultPageNumber(page, pendingPageNumber)) {
@@ -1790,13 +2030,17 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
     let targetGap = null;
     let resultPageNumber = 1;
     let previousRange = null;
+    let resetFromOvershotFirstPage = false;
     const pendingResultPageNumbers = [];
     const gapRecoveryPageNumbers = new Set();
-    const searchStartPageNumber = shouldUseDirectResultRankJump() ? resultSearchStartPageForRank(targetRank) : null;
+    const searchStartPageNumber = shouldUseDirectResultRankJump(targetRank, resultPageLimit) ? resultSearchStartPageForRank(targetRank) : null;
 
     if (searchStartPageNumber && searchStartPageNumber > 1) {
-      directPageClicked = await clickResultPageNumber(page, searchStartPageNumber);
-      if (directPageClicked) resultPageNumber = searchStartPageNumber;
+      directPageClicked = await clickResultPageNumberThroughPaginationWindow(page, searchStartPageNumber);
+      const activePageNumber = await activeResultPageNumber(page);
+      if (activePageNumber) resultPageNumber = activePageNumber;
+      else if (directPageClicked) resultPageNumber = searchStartPageNumber;
+      directPageClicked = directPageClicked || Boolean(activePageNumber && activePageNumber > 1);
     }
 
     for (let pageIndex = 1; pageIndex <= pageInspectionLimit; pageIndex += 1) {
@@ -1806,6 +2050,8 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
       const title = await page.title().catch(() => "");
       const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""));
       const range = rankRangeForRows(rows);
+      const activePageNumber = await activeResultPageNumber(page);
+      if (activePageNumber) resultPageNumber = activePageNumber;
       targetGap = targetGap || targetRankGap(previousRange, range, targetRank);
       const pageContentSignature = resultRowsSignature(rows, bodyText);
       if (visitedPageContentSignatures.has(pageContentSignature)) break;
@@ -1814,7 +2060,7 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
       // 캐시 페이지 적재
       cachedPages.push({ pageIndex, resultPageNumber, url, title, rows, bodyText });
 
-      searchedPages.push({ pageIndex, url, rows: rows.length, rankRange: range ? `${range.min}-${range.max}` : null });
+      searchedPages.push({ pageIndex, resultPageNumber, url, rows: rows.length, rankRange: range ? `${range.min}-${range.max}` : null });
       const candidates = targetRank ? rows.filter((row) => row.no === targetRank) : rows;
       let pageFoundRow = candidates.find((row) => resultRowMatchesTarget(row, player)) || null;
 
@@ -1826,6 +2072,22 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
       previousRange = range || previousRange;
 
       if (foundRow) break;
+      if (targetRank && range && range.min > targetRank) {
+        const retreat = await retreatResultPage(page, resultPageNumber);
+        if (!retreat.advanced) {
+          if (!resetFromOvershotFirstPage) {
+            resetFromOvershotFirstPage = true;
+            const reloadedPageNumber = await reloadResultPageAtFirstPage(page, timeout);
+            resultPageNumber = reloadedPageNumber || 1;
+            previousRange = null;
+            continue;
+          }
+          break;
+        }
+        directPageClicked = directPageClicked || retreat.directPageClicked;
+        resultPageNumber = retreat.resultPageNumber;
+        continue;
+      }
       if (resultRowsResolveTargetRank(rows, targetRank)) break;
       const pendingPageNumber = pendingResultPageNumbers.shift();
       if (pendingPageNumber && pendingPageNumber !== resultPageNumber && await clickResultPageNumber(page, pendingPageNumber)) {
@@ -1968,12 +2230,11 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     const bodyText = await page.locator("body").innerText({ timeout });
     const summary = parseSummary(bodyText);
     const { events, expansion } = await expandAllEventRows(page, summary.cashes, maxLoadMore);
-    const { uniqueEvents, duplicateEvents } = deduplicateComparisonEvents(events);
+    const { comparisonEvents: profileComparisonEvents, overflowEvents, duplicateEvents, strategy: comparisonStrategy } = comparisonEventsForSummary(events, summary);
     for (const event of duplicateEvents) {
       event.resultSkipped = event.resultSkipped || "건너뜀 (중복 이벤트 row)";
       event.duplicateEvent = true;
     }
-    const { comparisonEvents: profileComparisonEvents, overflowEvents } = splitEventsByExpectedCashes(uniqueEvents, summary);
     for (const event of overflowEvents) {
       event.resultSkipped = `건너뜀 (프로필 Cashes ${summary.cashes}개를 초과해 수집된 row)`;
       event.outsideProfileCashes = true;
@@ -1982,7 +2243,8 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     const skippedUnavailableResultEvents = disabledResultMode === "skip" ? unavailableResultEvents : [];
     const summaryForComparison = summary;
     const comparableEvents = profileComparisonEvents;
-    const tabChecks = await collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode, []);
+    const tabChecks = await collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode, skippedUnavailableResultEvents);
+    const calculated = calculatedWithVerifiedTabCounts(calculateFromEvents(comparableEvents), summary, tabChecks);
 
     if (!events.length) warnings.push("수집된 이벤트 행이 존재하지 않습니다.");
     if (summary.cashes && events.length < summary.cashes) {
@@ -2002,8 +2264,9 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
       events,
       expansion,
       duplicateEvents: duplicateEvents.length,
+      comparisonStrategy,
       tabChecks,
-      calculated: calculateFromEvents(comparableEvents),
+      calculated,
       comparisons: [],
       warnings,
       defects: [],
@@ -2061,7 +2324,7 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
         const checkableDisabledCount = unavailableResultEvents.filter((event) => event.disabledResultUrl).length;
         warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건 중 URL이 있는 ${checkableDisabledCount}건은 직접 접근으로 검증합니다.`);
       } else {
-        warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건은 아직 검증 가능한 페이지가 아니어서 건너뛰고, 프로필 요약 비교에서도 제외했습니다.`);
+        warnings.push(`Result 버튼/링크가 비활성화된 ${unavailableResultEvents.length}건은 아직 검증 가능한 페이지가 아니어서 Result 상세 페이지 검증만 건너뜁니다. 프로필 요약/탭 계산에는 포함합니다.`);
       }
     }
 
@@ -2758,6 +3021,9 @@ function runSelfTest() {
   if (resultSearchStartPageForRank(501) !== 9 || resultSearchStartPageForRank(28) !== null) {
     throw new Error("Result search start page calculation failed");
   }
+  if (!shouldUseDirectResultRankJump(1006, 10) || !shouldUseDirectResultRankJump(1006, 0) || shouldUseDirectResultRankJump(28, 10)) {
+    throw new Error("Result direct rank jump gating failed");
+  }
   if (resultPageNumberForRank(50) !== null || resultPageNumberForRank(51) !== 2 || resultPageNumberForRank(100) !== 2 || resultPageNumberForRangeStart(400) !== 8 || resultPageNumberForRangeStart(401) !== 9) {
     throw new Error("Result page number calculation failed");
   }
@@ -2780,6 +3046,9 @@ function runSelfTest() {
   if (!resultPlayerNameMatches("Christian Frimodt Denmark", "ButijustknowChristian Frimodt")) {
     throw new Error("Screen-name-prefixed player name matching failed");
   }
+  if (resultPlayerMatches("William Wolf Mexico", { name: "William Foxen", standingsSources: [] })) {
+    throw new Error("Result player matching should not match players by first name only");
+  }
   if (!resultPlayerMatches("Александр Басин Russia", { name: "SBasinАлександр Басин", standingsSources: [{ name: "Александр Басин" }] })) {
     throw new Error("Standings real-name alias matching failed");
   }
@@ -2790,6 +3059,10 @@ function runSelfTest() {
   const textFallbackMoneyMismatchRow = findResultRowInBodyText("Final Result No Player Country Earnings 52 Александр Басин Russia $875,000 53 Other Player Germany $1,000", { name: "SBasinАлександр Басин", standingsSources: [{ name: "Александр Басин" }] }, 52, 876595);
   if (!textFallbackMoneyMismatchRow || textFallbackMoneyMismatchRow.no !== 52 || textFallbackMoneyMismatchRow.earnings !== 875000) {
     throw new Error("Final result text fallback should preserve the found row for an earnings mismatch failure");
+  }
+  const wrongWilliamFallbackRow = findResultRowInBodyText("Final Result No Player Country Earnings 111 William Wolf Mexico $7,005", { name: "William Foxen", standingsSources: [] }, null, 836);
+  if (wrongWilliamFallbackRow) {
+    throw new Error("Final result text fallback should not match a different player with the same first name");
   }
   const audFallbackRow = findResultRowInBodyText("5 Kahle Burns New Zealand A$201,994 6 Benny Spindler Germany A$146,205 7 Mikel Habb Australia A$107,730 8 Russell Thomas United States A$82,721 9 Antonio Esfandiari United States A$65,408 10 Jordan Westmorland Australia A$65,408", { name: "Antonio Esfandiari", standingsSources: [] }, 9, 65408);
   if (!audFallbackRow || audFallbackRow.no !== 9 || audFallbackRow.earnings !== 65408) {
@@ -2867,6 +3140,19 @@ function runSelfTest() {
   if (overflowSplit.comparisonEvents.length !== 2 || overflowSplit.overflowEvents.length !== 2 || calculateFromEvents(overflowSplit.comparisonEvents).cashes !== 2) {
     throw new Error("Events beyond profile Cashes should be excluded from comparison totals");
   }
+  const exactExpectedSplit = comparisonEventsForSummary([events[0], events[0]], parseSummary("Title 2 Bracelets 2 Rings 0 Final Tables 2 Cashes 2 Total Earnings $200,000"));
+  if (exactExpectedSplit.comparisonEvents.length !== 2 || exactExpectedSplit.strategy !== "raw") {
+    throw new Error("Collected rows that already match profile Cashes should not be deduplicated");
+  }
+  const duplicateBeforeLegitimateWinA = normalizeEvent({ rowIndex: 10, text: "Duplicate FT #9 $10,000 Result", cells: ["Duplicate FT", "#9", "$10,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/dup-a", hasResultControl: true });
+  duplicateBeforeLegitimateWinA.date = "Jan 01 2024";
+  const duplicateBeforeLegitimateWinB = normalizeEvent({ rowIndex: 11, text: "Duplicate FT #9 $10,000 Result", cells: ["Duplicate FT", "#9", "$10,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: null, hasResultControl: true });
+  duplicateBeforeLegitimateWinB.date = "Jan 01 2024";
+  const dedupPreferredSplit = comparisonEventsForSummary([duplicateBeforeLegitimateWinA, duplicateBeforeLegitimateWinB, skippedBraceletWin], parseSummary("Title 1 Bracelets 1 Rings 0 Final Tables 2 Cashes 2 Total Earnings $22,345"));
+  const dedupPreferredCalculated = calculateFromEvents(dedupPreferredSplit.comparisonEvents);
+  if (dedupPreferredSplit.strategy !== "deduped" || dedupPreferredCalculated.titles !== 1 || dedupPreferredCalculated.finalTables !== 2 || dedupPreferredCalculated.cashes !== 2) {
+    throw new Error("Summary comparison should deduplicate only when it improves profile count matching");
+  }
   const originalFinalTableEvent = normalizeEvent({ rowIndex: 4, text: "Original label #9 $10,000 Result", cells: ["Original label", "#9", "$10,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/original", hasResultControl: true });
   originalFinalTableEvent.date = "Jan 01 2024";
   const duplicateEvent = normalizeEvent({ rowIndex: 5, text: "Alternate label #9 $10,000 Result", cells: ["Alternate label", "#9", "$10,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: null, hasResultControl: true });
@@ -2877,6 +3163,14 @@ function runSelfTest() {
   const dedupedCalculated = calculateFromEvents(dedupedSplit.comparisonEvents);
   if (deduped.duplicateEvents.length !== 1 || dedupedCalculated.titles !== 3 || dedupedCalculated.finalTables !== 4 || dedupedCalculated.cashes !== 5) {
     throw new Error("Duplicate event rows should be removed before applying profile Cashes overflow");
+  }
+  const sameDateRankPrizeA = normalizeEvent({ rowIndex: 10, text: "Distinct Event A #9 $10,000 Result", cells: ["Distinct Event A", "#9", "$10,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/a", hasResultControl: true });
+  sameDateRankPrizeA.date = "Jan 01 2024";
+  const sameDateRankPrizeB = normalizeEvent({ rowIndex: 11, text: "Distinct Event B #9 $10,000 Result", cells: ["Distinct Event B", "#9", "$10,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/b", hasResultControl: true });
+  sameDateRankPrizeB.date = "Jan 01 2024";
+  const distinctSamePrizeEvents = deduplicateComparisonEvents([sameDateRankPrizeA, sameDateRankPrizeB]);
+  if (distinctSamePrizeEvents.uniqueEvents.length !== 2 || distinctSamePrizeEvents.duplicateEvents.length !== 0) {
+    throw new Error("Distinct events with the same date, rank, and earnings should not be deduplicated");
   }
   const earningsComparison = compareSummary({ totalEarnings: 100 }, { totalEarnings: 200 }).find((item) => item.key === "totalEarnings");
   if (earningsComparison?.status !== "warn" || buildDefects({ name: "Sample", url: "https://example.test/player", comparisons: [earningsComparison] }).length) {
