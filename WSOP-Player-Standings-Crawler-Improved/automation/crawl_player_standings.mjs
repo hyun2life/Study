@@ -530,17 +530,6 @@ function calculateFromEvents(events) {
   };
 }
 
-function subtractEventCountsFromSummary(summary, skippedEvents) {
-  const skipped = calculateFromEvents(skippedEvents || []);
-  const adjusted = { ...summary };
-  for (const key of ["titles", "bracelets", "rings", "finalTables", "cashes", "totalEarnings"]) {
-    if (Number.isFinite(adjusted[key])) {
-      adjusted[key] = Math.max(0, adjusted[key] - (skipped[key] || 0));
-    }
-  }
-  return adjusted;
-}
-
 // 중복 처리는 의도적으로 제한한다. 중복 제거가 프로필 비교 정확도를
 // 높이는 경우에만 사용하고, 그 외에는 원본 row를 유지한다.
 function eventDeduplicationKey(event) {
@@ -1349,16 +1338,11 @@ async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResul
 
   for (const tabCheck of PROFILE_TAB_CHECKS) {
     const expected = summary?.[tabCheck.summaryKey];
-    const skippedForTab = skippedEvents.filter((event) => eventContributesToProfileTab(event, tabCheck.key));
-    const skippedKeys = new Set(skippedForTab.map((event) => eventComparisonKey(event)));
-    const skippedCalculated = calculateFromEvents(skippedForTab);
-    const skippedValue = skippedCalculated[tabCheck.summaryKey] || 0;
-    const adjustedExpected = Number.isFinite(expected) ? Math.max(0, expected - skippedValue) : expected;
     const check = {
       key: tabCheck.key,
       label: tabCheck.label,
       summaryKey: tabCheck.summaryKey,
-      expected: adjustedExpected,
+      expected,
       actual: null,
       selectedTab: null,
       status: "warn",
@@ -1373,31 +1357,31 @@ async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResul
     }
 
     if (!check.selectedTab) {
-      check.status = Number.isFinite(adjustedExpected) && adjustedExpected > 0 ? "fail" : "warn";
+      check.status = Number.isFinite(expected) && expected > 0 ? "fail" : "warn";
       check.detail = `Profile tab not found. Tried: ${tabCheck.tabLabels.join(", ")}.`;
       checks.push(check);
       continue;
     }
 
     const { events: tabEvents, expansion } = await expandCurrentProfileTabRows(page, expected, maxLoadMore);
+    const skippedForTab = skippedEvents.filter((event) => eventContributesToProfileTab(event, tabCheck.key));
+    const skippedKeys = new Set(skippedForTab.map((event) => eventComparisonKey(event)));
     const comparableTabEvents = skippedKeys.size
       ? tabEvents.filter((event) => !skippedKeys.has(eventComparisonKey(event)))
       : tabEvents;
     tabEventsByKey[tabCheck.key] = tabEvents;
-    check.expected = adjustedExpected;
+    check.expected = expected;
     check.actual = calculateFromEvents(comparableTabEvents)[tabCheck.summaryKey];
-    check.status = Number.isFinite(adjustedExpected) && adjustedExpected === check.actual ? "pass" : "fail";
+    check.status = Number.isFinite(expected) && expected === check.actual ? "pass" : "fail";
     check.skipped = skippedForTab.length;
     check.duplicates = 0;
     check.rawRows = tabEvents.length;
     check.comparableRows = comparableTabEvents.length;
     check.countStrategy = "tab-conditional-count";
-    check.originalExpected = expected;
     const detailParts = [
       `${check.selectedTab} tab calculated=${check.actual}`,
       `profile ${tabCheck.label}=${check.expected ?? "-"}`
     ];
-    if (check.originalExpected !== check.expected) detailParts.push(`original=${check.originalExpected ?? "-"}`);
     if (check.rawRows !== check.actual) detailParts.push(`rawRows=${check.rawRows}`);
     if (check.comparableRows !== check.rawRows) detailParts.push(`comparableRows=${check.comparableRows}`);
     if (check.skipped) detailParts.push(`disabledResultSkipped=${check.skipped}`);
@@ -2477,10 +2461,8 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     }
     const unavailableResultEvents = profileComparisonEvents.filter((event) => event.resultUnavailable);
     const skippedUnavailableResultEvents = disabledResultMode === "skip" ? unavailableResultEvents : [];
+    const summaryForComparison = summary;
     const skippedUnavailableKeys = new Set(skippedUnavailableResultEvents.map((event) => eventComparisonKey(event)));
-    const summaryForComparison = disabledResultMode === "skip"
-      ? subtractEventCountsFromSummary(summary, skippedUnavailableResultEvents)
-      : summary;
     const comparableEvents = skippedUnavailableKeys.size
       ? profileComparisonEvents.filter((event) => !skippedUnavailableKeys.has(eventComparisonKey(event)))
       : profileComparisonEvents;
@@ -3416,11 +3398,6 @@ function runSelfTest() {
   const comparisons = compareSummary(summary, calculated);
   if (comparisons.some((item) => item.status !== "pass")) {
     throw new Error(`Self-test comparison failed: ${JSON.stringify(comparisons)}`);
-  }
-  const disabledSkippedSummary = subtractEventCountsFromSummary(disabledIncludedSummary, [skippedBraceletWin]);
-  const disabledSkippedComparisons = compareSummary(disabledSkippedSummary, calculateFromEvents([]));
-  if (disabledSkippedComparisons.some((item) => item.status !== "pass")) {
-    throw new Error("Disabled Result skip mode should subtract skipped events from profile comparisons");
   }
   const overflowSplit = splitEventsByExpectedCashes(events, parseSummary("Title 1 Bracelets 1 Rings 0 Final Tables 2 Cashes 2 Total Earnings $150,000"));
   if (overflowSplit.comparisonEvents.length !== 2 || overflowSplit.overflowEvents.length !== 2 || calculateFromEvents(overflowSplit.comparisonEvents).cashes !== 2) {
