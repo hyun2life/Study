@@ -22,7 +22,7 @@ set "RESULT_RANK_LIMIT=0"
 set "MAX_LOAD_MORE=50"
 set "RESULT_PAGE_LIMIT=0"
 set "DISABLED_RESULT_MODE=skip"
-set "CONCURRENCY=8"
+set "CONCURRENCY=10"
 
 echo ============================================
 echo WSOP Player Standings Crawler

@@ -190,7 +190,7 @@ set "DISABLED_RESULT_MODE=fail"
 | `hasFinalResultRows` | Result 상세 페이지에서 최종 결과표 row를 찾지 못했습니다. 페이지 로딩, 접근 차단, 페이지 구조 변경 가능성이 있습니다. |
 | `rankMatches` | standings/profile의 순위와 Result 상세 페이지의 순위가 일치하지 않습니다. |
 | `playerMatches` | 선수명이 일치하지 않습니다. 닉네임/실명 병기, 특수문자, 사이트 표기 차이를 확인해야 합니다. |
-| `earningsMatches` | 상금이 일치하지 않습니다. 달러/유로/파운드 표기나 사이트 원본 값 차이를 확인해야 합니다. |
+| `earningsMatches` | Result 상세 페이지의 상금이 profile/event row의 상금과 일치하지 않습니다. Result 검증에서는 상금까지 정확히 일치해야 하므로 실패로 기록합니다. |
 | `resultControlEnabled` | `DISABLED_RESULT_MODE=fail`일 때 비활성 Result 버튼/링크를 결함으로 기록한 항목입니다. |
 
 실패가 나오면 먼저 열린 브라우저에서 해당 `Link`를 직접 확인하고, 실제 페이지에도 같은 값이 보이는지 비교하세요.
@@ -212,15 +212,17 @@ set "DISABLED_RESULT_MODE=fail"
 
 ALL 탭에서는 `MAX_LOAD_MORE` 값만큼 `Load more`를 눌러 더 많은 row를 펼칩니다. 프로필 상단 `Cashes` 값에 도달하면 더 누르지 않고 멈춥니다.
 
+`Total Earnings` 합계는 환율 변환, 통화 표기, 사이트 원본값 차이로 profile 상단 값과 ALL 탭 계산값이 다를 수 있습니다. 따라서 `Total Earnings` 불일치는 리포트에서 `주의`로 표시하고 실패 집계에서는 제외합니다. 단, Result 상세 페이지 검증의 상금 불일치는 정확성 검증 대상이므로 실패입니다.
+
 `Title`, `Bracelets`, `Rings`, `Final Tables` 탭도 프로필 상단 요약값보다 표시 row 수가 적으면 해당 탭 안에서 `Load more`를 눌러 요약값에 도달할 때까지 펼친 뒤 비교합니다.
 
 ### 비활성 Result 처리
 
 `DISABLED_RESULT_MODE=skip`일 때 비활성 Result 버튼/링크는 아직 검증 가능한 Result 페이지가 아니라고 보고 건너뜁니다.
 
-이때 건너뛴 row는 Result 검증뿐 아니라 프로필 요약값 비교에서도 제외합니다. WSOP 프로필 상단 요약값이 비활성 Result row를 포함하지 않는 경우가 있기 때문입니다.
+이때 건너뛴 row는 Result 상세 페이지 검증에서만 제외합니다. 프로필 상단 요약값, ALL 탭 계산값, Title/Bracelets/Rings/Final Tables 탭 row 수 비교에는 그대로 포함합니다. 비활성 Result는 상세 결과 페이지 검증만 아직 할 수 없다는 뜻이지, 프로필 이벤트 row 자체가 무효라는 뜻은 아니기 때문입니다.
 
-예를 들어 비활성 Result row가 1건 있고 그 row의 상금이 `$50,000`이면, 크롤러는 비교용 계산에서 `Cashes` 1건과 `Total Earnings $50,000`을 제외합니다. 해당 row가 1~9위라면 `Final Tables` 계산에서도 제외됩니다.
+예를 들어 비활성 Result row가 1건 있고 그 row가 1~9위라면, Result 페이지 검증은 건너뛰지만 `Cashes`, `Total Earnings`, `Final Tables` 계산에는 포함합니다.
 
 비활성 Result 자체를 결함으로 보고 싶으면 BAT에서 아래처럼 바꾸면 됩니다.
 
