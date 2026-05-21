@@ -2,8 +2,21 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
+// WSOP 선수 순위 크롤러.
+//
+// 전체 흐름:
+// 1. 각 standings 카테고리에서 선수 프로필 URL을 수집한다.
+// 2. 선수 프로필을 열고 상단 요약 카운터를 읽는다.
+// 3. ALL 탭을 펼쳐 전체 row 기준 요약값을 계산한다.
+// 4. 각 지표 탭을 열고 같은 조건으로 독립 계산한다.
+// 5. 검증 가능한 Result 페이지를 열어 순위/선수명/상금을 확인한다.
+// 6. JSON, CSV, 영문 HTML, 국문 HTML 리포트를 생성한다.
+//
+// 정합성이 최우선이다. 속도를 위해 작은 페이지 제한이 설정되어 있어도,
+// Result 페이지는 target rank 구간을 실제로 덮었다고 판단될 때까지 탐색한다.
 const DEFAULT_PLAYERS_URL = "https://wsop-stage.ggnweb.com/players";
 
+// WSOP 선수 프로필 상단에 표시되는 요약 지표.
 const STAT_DEFS = [
   { key: "titles", label: "Title", type: "number" },
   { key: "bracelets", label: "Bracelets", type: "number" },
@@ -13,6 +26,7 @@ const STAT_DEFS = [
   { key: "totalEarnings", label: "Total Earnings", type: "money" }
 ];
 
+// 크롤러 진입점으로 사용하는 공개 standings 카테고리.
 const STANDINGS_CATEGORIES = [
   { label: "2026 Standings", path: "2026-standings" },
   { label: "All-Time Earnings - Men", path: "all-time-earnings-men" },
@@ -21,6 +35,7 @@ const STANDINGS_CATEGORIES = [
   { label: "All-Time Rings", path: "all-time-rings" }
 ];
 
+// ALL 탭과 별도로 독립 검증할 프로필 지표 탭.
 const PROFILE_TAB_CHECKS = [
   { key: "titles", label: "Title", summaryKey: "titles", tabLabels: ["TITLES", "TITLE"] },
   { key: "bracelets", label: "Bracelets", summaryKey: "bracelets", tabLabels: ["BRACELETS", "BRACELET"] },
@@ -32,13 +47,20 @@ const DEFAULT_CONCURRENCY = 5;
 const MAX_CONCURRENCY = 10;
 const DEFAULT_RESULT_PAGE_LIMIT = 0;
 const DISABLED_RESULT_MODES = new Set(["skip", "fail", "check"]);
+
+// WSOP Result 페이지는 동률/순위 공백이 있어서 예상 페이지 계산만 믿기 어렵다.
+// 그래서 예상 rank 페이지보다 몇 페이지 앞에서 탐색을 시작한다.
 const RESULT_SEARCH_LOOKBEHIND_PAGES = 2;
 
 // 결과 페이지 캐시 (url -> cachedPages 배열)
-// cachedPages: Array<{ pageIndex, url, title, rows, bodyText }>
+// cachedPages 구조: { pageIndex, resultPageNumber, url, title, rows, bodyText } 배열
+// Result URL 기준 페이지 캐시.
+// 캐시는 target rank 구간을 실제로 덮었다는 근거가 있을 때만 재사용한다.
+// 일부 페이지만 보거나 target보다 뒤쪽으로 overshoot된 캐시는 무시한다.
 const resultPageRowsCache = new Map();
 
 // 지수 백오프 기반 재시도 유틸리티
+// 일시적인 네비게이션/네트워크 실패만 재시도한다. 영구 오류는 숨기지 않는다.
 async function retryWithBackoff(fn, retries = 3, delayMs = 1500) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -161,6 +183,8 @@ function normalizeDisabledResultMode(value) {
   return mode;
 }
 
+// 선수명 비교용 후보를 만든다. WSOP 셀에는 닉네임, 실명, 국가명,
+// 여러 문자권 텍스트가 섞일 수 있으므로 원문 완전 일치는 너무 취약하다.
 function comparableNameCandidates(value) {
   const originalText = normalizeText(value);
   const text = originalText.toLowerCase();
@@ -211,6 +235,8 @@ function resultPlayerMatches(rowPlayer, player) {
   return rowNames.some((rowName) => targetNames.some((targetName) => rowName.includes(targetName) || targetName.includes(rowName)));
 }
 
+// 금액 파싱 헬퍼는 프로필 row, Result 표, 본문 텍스트 fallback에서 함께 쓴다.
+// 비교를 위해 소수점은 반올림해 정수 금액으로 맞춘다.
 function parseMoneyFromText(value) {
   const match = normalizeText(value).match(/(?:[$\u20ac\u00a3]|[A-Z]{1,3}\$)\s*(-?\d[\d,]*(?:\.\d+)?)/);
   return match ? Math.round(Number(match[1].replace(/[,\s]/g, ""))) : null;
@@ -272,6 +298,8 @@ function findTextMatchIndexes(text, needle) {
   return indexes;
 }
 
+// Result 페이지 표 파싱이 실패했을 때 쓰는 보수적인 본문 텍스트 fallback.
+// 다른 선수의 상금을 잘못 잡지 않도록 순위/선수명 근접성을 함께 확인한다.
 function findResultRowInBodyText(bodyText, player, targetRank, targetEarnings) {
   const text = normalizeText(bodyText);
   if (!text) return null;
@@ -344,6 +372,12 @@ function resultMissingChecks(checks) {
     .map(([key]) => key);
 }
 
+// targetRankCovered가 false면 예상 순위 구간을 실제로 확인했다고 볼 수 없다.
+// 이 상태는 데이터 불일치가 아니라 탐색 미완료로 분리한다.
+function resultSearchIncomplete(result) {
+  return (result?.missing || []).includes("targetRankCovered");
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -410,6 +444,8 @@ function parseEntries(value) {
   return match ? Number(match[1]) : null;
 }
 
+// 화면 텍스트에서 상단 요약 카운터를 읽는다.
+// 이 값은 독립 수집한 프로필 row 계산값과 비교할 기준값이다.
 function parseSummary(bodyText) {
   const compact = normalizeText(bodyText);
   const summary = {};
@@ -443,6 +479,8 @@ function valueByHeader(row, patterns) {
   return "";
 }
 
+// 원본 표 row를 크롤러 전체에서 쓰는 이벤트 구조로 정규화한다.
+// 포함 정보: 이벤트명, 날짜, 순위, 상금, Result URL, Result 상태.
 function normalizeEvent(row) {
   const rankSource =
     valueByHeader(row, [/rank/i, /place/i, /finish/i, /result/i]) ||
@@ -492,6 +530,8 @@ function calculateFromEvents(events) {
   };
 }
 
+// 중복 처리는 의도적으로 제한한다. 중복 제거가 프로필 비교 정확도를
+// 높이는 경우에만 사용하고, 그 외에는 원본 row를 유지한다.
 function eventDeduplicationKey(event) {
   if (!event) return "";
   return eventComparisonKey(event);
@@ -612,27 +652,6 @@ function eventContributesToProfileTab(event, tabKey) {
   return false;
 }
 
-function pickClosestCountVariant(variants, preferredName = "raw") {
-  const sorted = [...variants].sort((left, right) => {
-    if (left.difference !== right.difference) return left.difference - right.difference;
-    if (left.name === preferredName) return -1;
-    if (right.name === preferredName) return 1;
-    return left.priority - right.priority;
-  });
-  return sorted[0] || variants[0];
-}
-
-function calculatedWithVerifiedTabCounts(calculated, summary, tabChecks) {
-  const adjusted = { ...calculated };
-  for (const tabCheck of tabChecks || []) {
-    if (tabCheck.status !== "pass") continue;
-    if (!tabCheck.summaryKey) continue;
-    if (!Number.isFinite(summary?.[tabCheck.summaryKey])) continue;
-    adjusted[tabCheck.summaryKey] = summary[tabCheck.summaryKey];
-  }
-  return adjusted;
-}
-
 function compareSummary(summary, calculated) {
   return STAT_DEFS.map((stat) => {
     const top = summary[stat.key];
@@ -674,6 +693,8 @@ function formatStatus(status) {
   }[status] || status || "-";
 }
 
+// 모든 비교 계층에서 결함 후보를 만든다.
+// 크롤러/탐색 미완료와 실제 페이지 데이터 불일치는 리포트에서 구분한다.
 function buildDefects(player) {
   const defects = [];
 
@@ -687,6 +708,19 @@ function buildDefects(player) {
       actual: formatValue(comparison.label, comparison.calculated),
       url: player.url,
       detail: `${comparison.label}: top=${formatValue(comparison.label, comparison.top)}, calculated=${formatValue(comparison.label, comparison.calculated)}`
+    });
+  }
+
+  for (const consistency of player.tabConsistency || []) {
+    if (consistency.status !== "fail") continue;
+    defects.push({
+      type: "Profile tab vs ALL mismatch",
+      player: player.name,
+      item: consistency.label,
+      expected: formatValue(consistency.label, consistency.allCalculated),
+      actual: consistency.selectedTab ? formatValue(consistency.label, consistency.tabCalculated) : "Tab not found",
+      url: player.url,
+      detail: consistency.detail
     });
   }
 
@@ -708,11 +742,11 @@ function buildDefects(player) {
     if (!result) continue;
     if (result.status === "pass") continue;
     defects.push({
-      type: "Result page mismatch",
+      type: resultSearchIncomplete(result) ? "Result search incomplete" : "Result page mismatch",
       player: player.name,
       item: event.eventName,
       expected: `Final Result row: No ${event.rank ?? "-"}, ${player.name}, ${formatValue("Total Earnings", event.earnings)}`,
-      actual: result.error || (result.foundRow ? `Found No ${result.foundRow.no}, ${result.foundRow.player}, ${formatValue("Total Earnings", result.foundRow.earnings)}` : `Missing: ${(result.missing || []).join(", ")}`),
+      actual: result.error || (resultSearchIncomplete(result) ? "Crawler did not fully cover the target rank range" : (result.foundRow ? `Found No ${result.foundRow.no}, ${result.foundRow.player}, ${formatValue("Total Earnings", result.foundRow.earnings)}` : `Missing: ${(result.missing || []).join(", ")}`)),
       url: result.url || event.resultUrl || player.url,
       detail: result.error || JSON.stringify({ checks: result.checks, searchedPages: result.searchedPages, foundRow: result.foundRow })
     });
@@ -778,6 +812,8 @@ async function waitForAccessLogin(page, authWaitMs) {
   await page.waitForLoadState("networkidle").catch(() => {});
 }
 
+// 설정된 standings 카테고리에서 선수 URL을 수집한다. 같은 선수가 여러
+// 카테고리에 등장할 수 있으므로 출처 정보는 보존하고 프로필 URL 기준으로 중복 제거한다.
 async function collectPlayerUrls(page, playersUrl, limit, authWaitMs) {
   const entries = await collectPlayerEntries(page, playersUrl, limit, authWaitMs);
   return entries.map((entry) => entry.url);
@@ -863,6 +899,7 @@ async function extractStandingPlayerLinks(page, limit) {
   return rows;
 }
 
+// standings 카테고리 URL을 만든다. 기존 stage URL과 공개 wsop.com 경로 형식을 모두 지원한다.
 function categoryUrlFor(playersUrl, category) {
   try {
     const url = new URL(playersUrl);
@@ -949,6 +986,7 @@ function playerNameFromUrl(urlValue) {
   }
 }
 
+// 프로필 제목에 배지, 반복 텍스트, 닉네임이 섞이면 standings 출처의 이름을 우선 사용한다.
 function cleanPlayerName(nameValue, urlValue) {
   let name = normalizeText(nameValue).replace(/\bPlayer Profile\b/gi, "").trim();
   const slugName = playerNameFromUrl(urlValue);
@@ -997,6 +1035,8 @@ async function extractPlayerName(page) {
   return cleanPlayerName(heading || normalizeText(title).replace(/\s*\|\s*WSOP\.com.*$/i, ""), page.url());
 }
 
+// WSOP가 어떤 표 구조로 렌더링하든 보이는 프로필 이벤트 row를 추출한다.
+// Result 컨트롤은 링크, 버튼, 비활성 컨트롤, 숨은 href일 수 있어 row 구조를 넓게 받는다.
 async function extractEventRows(page) {
   const rawRows = await page.evaluate(() => {
     const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -1093,20 +1133,70 @@ async function extractEventRows(page) {
     });
 }
 
+// 전역 사이트 네비게이션이 아니라 프로필 내부 탭만 선택한다.
+// header의 "BRACELETS" 같은 링크를 잘못 눌러 프로필 페이지를 벗어나는 일을 막는다.
 async function selectProfileTab(page, tabLabel) {
   const selector = `button:has-text("${tabLabel}"), a:has-text("${tabLabel}"), [role=tab]:has-text("${tabLabel}")`;
   const controls = page.locator(selector);
   const count = await controls.count().catch(() => 0);
   const exactPattern = new RegExp(`^\\s*${escapeRegExp(tabLabel)}\\s*$`, "i");
+  const currentPath = new URL(page.url()).pathname.replace(/\/+$/, "");
+  const candidates = [];
 
   for (let i = 0; i < count; i += 1) {
     const control = controls.nth(i);
     const text = normalizeText(await control.innerText({ timeout: 1000 }).catch(() => ""));
     if (!exactPattern.test(text)) continue;
     if (!(await control.isVisible().catch(() => false))) continue;
+    const candidate = await control.evaluate((element, currentPathname) => {
+      const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+      const href = element.href || element.getAttribute("href") || "";
+      let hrefPath = "";
+      try {
+        hrefPath = href ? new URL(href, window.location.href).pathname.replace(/\/+$/, "") : "";
+      } catch {}
+      const inGlobalChrome = Boolean(element.closest("header, nav, footer"));
+      const classText = normalize([
+        element.className,
+        element.getAttribute("role"),
+        element.getAttribute("aria-controls"),
+        element.getAttribute("data-tab"),
+        element.getAttribute("data-testid")
+      ].filter(Boolean).join(" "));
+      const hrefLeavesProfile = Boolean(hrefPath && hrefPath !== currentPathname);
+      const tabLike = element.tagName === "BUTTON"
+        || element.getAttribute("role") === "tab"
+        || /\b(tab|filter|category|profile)\b/i.test(classText)
+        || !href
+        || href.startsWith("#")
+        || hrefPath === currentPathname;
+      let score = 0;
+      if (element.getAttribute("role") === "tab") score += 6;
+      if (element.tagName === "BUTTON") score += 5;
+      if (/\b(tab|filter|category|profile)\b/i.test(classText)) score += 4;
+      if (!href || href.startsWith("#") || hrefPath === currentPathname) score += 3;
+      if (inGlobalChrome) score -= 10;
+      if (hrefLeavesProfile) score -= 20;
+      if (!tabLike || hrefLeavesProfile) return null;
+      return { score };
+    }, currentPath).catch(() => null);
+    if (!candidate) continue;
+    candidates.push({ control, score: candidate.score });
+  }
+
+  candidates.sort((left, right) => right.score - left.score);
+  for (const { control } of candidates) {
+    const beforeUrl = page.url();
     await control.click({ timeout: 5000 }).catch(() => {});
     await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(500);
+    const afterUrl = page.url();
+    const afterPath = new URL(afterUrl).pathname.replace(/\/+$/, "");
+    if (afterPath !== currentPath) {
+      await page.goto(beforeUrl, { waitUntil: "domcontentloaded", timeout: 10000 }).catch(() => {});
+      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+      continue;
+    }
     return true;
   }
 
@@ -1132,6 +1222,8 @@ async function findVisibleLoadMoreControl(page) {
   return null;
 }
 
+// 더보기 클릭 후 이벤트 수가 늘어날 때까지 기다린다.
+// 최신 row를 반환해 버튼 정체를 감지하면서도 부분 수집 데이터는 보존한다.
 async function waitForEventRowsToIncrease(page, beforeCount, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   let latestEvents = await extractEventRows(page);
@@ -1146,6 +1238,8 @@ async function waitForEventRowsToIncrease(page, beforeCount, timeoutMs = 15000) 
   return latestEvents;
 }
 
+// ALL 탭을 프로필 Cashes 수까지 펼친다.
+// ALL 탭은 요약 계산과 Result 페이지 검증에 쓰는 기본 이벤트 목록이다.
 async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
   const expansion = {
     tab: "ALL",
@@ -1200,6 +1294,8 @@ async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
   return { events, expansion };
 }
 
+// 단일 지표 탭을 펼친 뒤 ALL과 같은 규칙으로 해당 지표를 계산한다.
+// 탭을 보정값으로 쓰지 않고 독립 검증 대상으로 둔다.
 async function expandCurrentProfileTabRows(page, expectedRows, maxLoadMore) {
   let events = await extractEventRows(page);
   const expected = Number.isFinite(expectedRows) && expectedRows > 0 ? expectedRows : null;
@@ -1246,8 +1342,11 @@ async function expandCurrentProfileTabRows(page, expectedRows, maxLoadMore) {
   return { events, expansion };
 }
 
+// 모든 지표 탭을 열어 각 탭 자체의 조건 계산값을 구한다.
+// 이후 프로필 요약값 및 ALL 탭 계산값과 각각 비교한다.
 async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode, skippedComparisonEvents = []) {
   const checks = [];
+  const tabEventsByKey = {};
 
   for (const tabCheck of PROFILE_TAB_CHECKS) {
     const expected = summary?.[tabCheck.summaryKey];
@@ -1277,55 +1376,21 @@ async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResul
     }
 
     const { events: tabEvents, expansion } = await expandCurrentProfileTabRows(page, expected, maxLoadMore);
-    const skippedExpectedEvents = disabledResultMode === "skip"
-      ? skippedComparisonEvents.filter((event) => eventContributesToProfileTab(event, tabCheck.key))
-      : [];
-    const skippedExpectedKeys = new Set(skippedExpectedEvents.map(eventComparisonKey));
-    const skippedTabEvents = disabledResultMode === "skip" && skippedExpectedEvents.length
-      ? tabEvents.filter((event) => skippedExpectedKeys.has(eventComparisonKey(event)))
-      : [];
-    const skippedTabKeys = new Set(skippedTabEvents.map(eventComparisonKey));
-    const rawComparableTabEvents = skippedTabEvents.length
-      ? tabEvents.filter((event) => !skippedTabKeys.has(eventComparisonKey(event)))
-      : tabEvents;
-    const dedupedTabEvents = deduplicateComparisonEvents(tabEvents);
-    const dedupedComparableTabEvents = skippedTabEvents.length
-      ? dedupedTabEvents.uniqueEvents.filter((event) => !skippedTabKeys.has(eventComparisonKey(event)))
-      : dedupedTabEvents.uniqueEvents;
-    const adjustedExpected = Number.isFinite(expected)
-      ? Math.max(0, expected - skippedExpectedEvents.length)
-      : expected;
-    const variantExpected = (value) => Number.isFinite(value) ? value : expected;
-    const variantDifference = (actual, value) => Number.isFinite(value) ? Math.abs(actual - value) : 0;
-    const variants = [
-      { name: "raw", priority: 0, actual: tabEvents.length, expected, duplicateCount: 0, skippedCount: 0 },
-      { name: "deduped", priority: 1, actual: dedupedTabEvents.uniqueEvents.length, expected, duplicateCount: dedupedTabEvents.duplicateEvents.length, skippedCount: 0 },
-      { name: "disabled-skipped", priority: 2, actual: rawComparableTabEvents.length, expected, duplicateCount: 0, skippedCount: skippedTabEvents.length },
-      { name: "disabled-skipped-adjusted", priority: 3, actual: rawComparableTabEvents.length, expected: adjustedExpected, duplicateCount: 0, skippedCount: skippedTabEvents.length },
-      { name: "deduped-disabled-skipped", priority: 4, actual: dedupedComparableTabEvents.length, expected, duplicateCount: dedupedTabEvents.duplicateEvents.length, skippedCount: skippedTabEvents.length },
-      { name: "deduped-disabled-skipped-adjusted", priority: 5, actual: dedupedComparableTabEvents.length, expected: adjustedExpected, duplicateCount: dedupedTabEvents.duplicateEvents.length, skippedCount: skippedTabEvents.length }
-    ].map((variant) => ({
-      ...variant,
-      expected: variantExpected(variant.expected),
-      difference: variantDifference(variant.actual, variantExpected(variant.expected))
-    }));
-    const selectedVariant = pickClosestCountVariant(variants);
-    check.expected = selectedVariant.expected;
-    check.actual = selectedVariant.actual;
-    check.status = Number.isFinite(selectedVariant.expected) && selectedVariant.expected === selectedVariant.actual ? "pass" : "fail";
-    check.skipped = skippedTabEvents.length;
-    check.duplicates = selectedVariant.name.includes("deduped") ? dedupedTabEvents.duplicateEvents.length : 0;
-    check.countStrategy = selectedVariant.name;
+    tabEventsByKey[tabCheck.key] = tabEvents;
+    check.expected = expected;
+    check.actual = calculateFromEvents(tabEvents)[tabCheck.summaryKey];
+    check.status = Number.isFinite(expected) && expected === check.actual ? "pass" : "fail";
+    check.skipped = 0;
+    check.duplicates = 0;
+    check.rawRows = tabEvents.length;
+    check.countStrategy = "tab-conditional-count";
     check.originalExpected = expected;
     const detailParts = [
-      `${check.selectedTab} tab rows=${check.actual}`,
+      `${check.selectedTab} tab calculated=${check.actual}`,
       `profile ${tabCheck.label}=${check.expected ?? "-"}`
     ];
-    if (selectedVariant.name !== "raw") detailParts.push(`strategy=${selectedVariant.name}`);
-    if (check.duplicates) detailParts.push(`duplicates ignored=${check.duplicates}`);
-    if (selectedVariant.skippedCount) detailParts.push(`disabled skipped=${selectedVariant.skippedCount}`);
-    if (selectedVariant.name !== "raw" && rawComparableTabEvents.length !== check.actual) detailParts.push(`raw=${tabEvents.length}`);
-    if (check.expected !== expected) detailParts.push(`original=${expected ?? "-"}`);
+    if (check.rawRows !== check.actual) detailParts.push(`rawRows=${check.rawRows}`);
+    detailParts.push(`strategy=${check.countStrategy}`);
     detailParts.push(`loadMoreClicks=${expansion.loadMoreClicks}`);
     detailParts.push(`stopped=${expansion.stoppedReason}`);
     check.detail = `${detailParts.join(", ")}.`;
@@ -1333,9 +1398,32 @@ async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResul
   }
 
   await selectProfileTab(page, "ALL").catch(() => {});
-  return checks;
+  return { checks, tabEventsByKey };
 }
 
+// 각 탭의 조건 계산값을 ALL 계산값과 교차 확인한다.
+// 여기서 불일치하면 탭 필터링 또는 row 추출 문제일 가능성이 높다.
+function compareProfileTabsToAll(allCalculated, tabChecks) {
+  return (tabChecks || []).map((tabCheck) => {
+    const allValue = allCalculated?.[tabCheck.summaryKey];
+    const tabValue = tabCheck.actual;
+    const comparable = Number.isFinite(allValue) && Number.isFinite(tabValue);
+    const status = comparable && allValue === tabValue ? "pass" : "fail";
+    return {
+      key: tabCheck.key,
+      label: tabCheck.label,
+      summaryKey: tabCheck.summaryKey,
+      selectedTab: tabCheck.selectedTab,
+      allCalculated: allValue,
+      tabCalculated: tabValue,
+      status,
+      detail: `${tabCheck.selectedTab || "Missing tab"} ${tabCheck.label}=${tabValue ?? "-"}, ALL ${tabCheck.label}=${allValue ?? "-"}, strategy=conditional-count.`
+    };
+  });
+}
+
+// 토너먼트 Result 페이지의 row를 추출한다. 표 파싱을 우선하고,
+// 표가 없으면 보수적인 본문 텍스트 파서로 Final Result row 복구를 시도한다.
 async function extractFinalResultRows(page) {
   return page.evaluate(() => {
     const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -1407,6 +1495,8 @@ async function extractFinalResultRows(page) {
   });
 }
 
+// Result 페이지 내용 시그니처는 pagination 클릭 정체를 감지하는 데 쓴다.
+// 같은 페이지가 반복되면 바로 포기하지 않고 다른 전진 경로를 한 번 더 시도한다.
 async function currentResultPageContentSignature(page) {
   const rows = await extractFinalResultRows(page).catch(() => []);
   const bodyText = normalizeText(await page.locator("body").innerText({ timeout: 3000 }).catch(() => ""));
@@ -1427,6 +1517,8 @@ async function waitForResultPageContentChange(page, previousSignature, timeoutMs
   return false;
 }
 
+// canonical URL을 다시 열어 Result 첫 페이지로 복구한다.
+// 목표 구간을 지나친 뒤 이전 페이지 이동이 불가능할 때 처음부터 다시 확인하기 위한 경로다.
 async function reloadResultPageAtFirstPage(page, timeoutMs = 30000) {
   const previousSignature = await currentResultPageContentSignature(page);
   await page.goto(page.url(), { waitUntil: "domcontentloaded", timeout: timeoutMs }).catch(() => {});
@@ -1435,6 +1527,7 @@ async function reloadResultPageAtFirstPage(page, timeoutMs = 30000) {
   return activeResultPageNumber(page);
 }
 
+// 보이는 컨트롤에서 현재 활성 Result 페이지 번호를 읽는다.
 async function activeResultPageNumber(page) {
   const controls = page.locator("a, button, [role=button]");
   const count = await controls.count().catch(() => 0);
@@ -1454,6 +1547,8 @@ async function activeResultPageNumber(page) {
   return null;
 }
 
+// 보이는 특정 pagination 번호를 클릭한다.
+// 이미 해당 페이지가 활성 상태라면 성공으로 처리한다.
 async function clickResultPageNumber(page, pageNumber) {
   if (!pageNumber || pageNumber <= 1) return false;
   const pattern = new RegExp(`^\\s*${pageNumber}\\s*$`);
@@ -1476,6 +1571,8 @@ async function clickResultPageNumber(page, pageNumber) {
   return false;
 }
 
+// Result 페이지는 이동형 pagination 창을 쓰는 경우가 많다.
+// 보이는 페이지 번호를 찾고, target 페이지가 숨겨져 있으면 창을 넘긴다.
 async function visibleResultPageNumbers(page) {
   const controls = page.locator("a, button, [role=button]");
   const count = await controls.count().catch(() => 0);
@@ -1502,6 +1599,8 @@ async function clickNextVisibleResultPageNumber(page, currentPageNumber) {
   return null;
 }
 
+// target 페이지가 현재 보이지 않아도 도달을 시도한다.
+// 페이지 번호 창을 전진시킨 뒤 매번 목표 번호가 나타났는지 다시 확인한다.
 async function clickResultPageNumberThroughPaginationWindow(page, targetPageNumber, maxWindowAdvances = null) {
   if (!targetPageNumber || targetPageNumber <= 1) return false;
   if (await clickResultPageNumber(page, targetPageNumber)) return true;
@@ -1510,7 +1609,8 @@ async function clickResultPageNumberThroughPaginationWindow(page, targetPageNumb
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const activePageNumber = await activeResultPageNumber(page);
     if (activePageNumber && activePageNumber >= targetPageNumber) break;
-    if (!(await clickStrictNextResultPage(page))) break;
+    const advance = await advanceResultPage(page, activePageNumber || attempt + 1, targetPageNumber, true);
+    if (!advance.advanced) break;
     if (await clickResultPageNumber(page, targetPageNumber)) return true;
   }
 
@@ -1572,6 +1672,8 @@ async function clickForwardResultPaginationControl(page) {
   return false;
 }
 
+// 엄격한 next/previous 탐색은 잘못된 네비게이션 클릭을 줄이기 위한 좁은 선택자다.
+// 넓은 fallback은 strict 경로가 실패한 뒤에만 사용한다.
 async function clickStrictNextResultPage(page) {
   const controls = page.locator("a, button, [role=button]");
   const count = await controls.count().catch(() => 0);
@@ -1642,6 +1744,9 @@ async function clickStrictPreviousResultPage(page) {
   return false;
 }
 
+// Result 페이지 번호 이동의 중앙 전진 함수.
+// 직접 target 클릭, strict next, broader next, forward-window, 보이는 번호 순으로 시도한다.
+// 이 순서는 정확성을 유지하면서 WSOP의 불규칙한 pagination 마크업을 처리하기 위한 것이다.
 async function advanceResultPage(page, currentPageNumber, targetPageNumber, inspectEveryPage) {
   const nextPageNumber = currentPageNumber + 1;
 
@@ -1697,6 +1802,8 @@ async function advanceResultPage(page, currentPageNumber, targetPageNumber, insp
   return { advanced: false, resultPageNumber: currentPageNumber, directPageClicked: false };
 }
 
+// 페이지의 최소/최대 순위를 계산한다. 이 값은 진단용이며,
+// range만으로 target rank 검증 완료를 선언하지 않는다.
 function rankRangeForRows(rows) {
   const ranks = rows
     .map((row) => row.no)
@@ -1712,6 +1819,8 @@ function resultRangeResolvesTargetRank(range, targetRank) {
   return Boolean(targetRank && range && ((targetRank >= range.min && targetRank <= range.max) || range.min > targetRank));
 }
 
+// 목표 순위를 지나쳤을 때 한 페이지 뒤로 이동한다.
+// 실패하면 호출부에서 마지막 복구 수단으로 1페이지 reload를 시도할 수 있다.
 async function retreatResultPage(page, currentPageNumber) {
   const previousPageNumber = Math.max(1, currentPageNumber - 1);
 
@@ -1727,6 +1836,8 @@ async function retreatResultPage(page, currentPageNumber) {
   return { advanced: false, resultPageNumber: currentPageNumber, directPageClicked: false };
 }
 
+// 단일 페이지가 target rank를 해결했다고 보려면 target을 실제로 포함하고 그 뒤 순위도 보여야 한다.
+// 또는 페이지가 target 뒤에서 시작해야 한다. [1, 100] 같은 sparse row의 조기 종료를 막기 위함이다.
 function resultRowsResolveTargetRank(rows, targetRank) {
   if (!targetRank) return false;
   const ranks = (rows || [])
@@ -1738,6 +1849,53 @@ function resultRowsResolveTargetRank(rows, targetRank) {
   return minRank > targetRank || (ranks.includes(targetRank) && maxRank > targetRank);
 }
 
+// 캐시와 최종 탐색 결과의 다중 페이지 coverage 확인.
+// 목표 순위가 없다고 판단할 만큼 충분히 확인했는지 답한다.
+function resultPagesCoverTargetRank(pages, targetRank) {
+  if (!targetRank) return true;
+  const rankedPages = (pages || [])
+    .map((page) => ({
+      ...page,
+      ranks: (page.rows || [])
+        .map((row) => row.no)
+        .filter((rank) => Number.isFinite(rank))
+    }))
+    .filter((page) => page.ranks.length)
+    .map((page) => ({
+      ...page,
+      minRank: Math.min(...page.ranks),
+      maxRank: Math.max(...page.ranks)
+    }))
+    .sort((left, right) => left.minRank - right.minRank);
+
+  let sawTargetOrLowerRank = false;
+
+  for (const page of rankedPages) {
+    if (page.maxRank < targetRank) {
+      sawTargetOrLowerRank = true;
+      continue;
+    }
+
+    if (page.ranks.includes(targetRank)) {
+      if (page.maxRank > targetRank) return true;
+      sawTargetOrLowerRank = true;
+      continue;
+    }
+
+    if (page.minRank > targetRank) {
+      return sawTargetOrLowerRank;
+    }
+
+    if (page.minRank <= targetRank && page.maxRank >= targetRank) {
+      sawTargetOrLowerRank = true;
+    }
+  }
+
+  return false;
+}
+
+// target을 포함하는 순위 공백을 감지한다.
+// 실제 순위 누락과 크롤러 네비게이션 실패를 사람이 구분할 수 있도록 출력에 남긴다.
 function targetRankGap(previousRange, currentRange, targetRank) {
   if (!targetRank || !previousRange || !currentRange) return null;
   const gapStart = previousRange.max + 1;
@@ -1753,6 +1911,15 @@ function resultPageInspectionLimit(resultPageLimit) {
     throw new Error("--result-page-limit must be 0 or a positive number.");
   }
   return Math.floor(resultPageLimit);
+}
+
+// 설정된 limit은 속도 힌트일 뿐 정합성 경계가 아니다.
+// 깊은 순위는 target rank를 덮을 수 있도록 검사 예산을 자동 확장한다.
+function effectiveResultPageInspectionLimit(resultPageLimit, targetRank) {
+  const configuredLimit = resultPageInspectionLimit(resultPageLimit);
+  if (configuredLimit === Number.MAX_SAFE_INTEGER || !targetRank) return configuredLimit;
+  const targetPage = resultPageNumberForRangeStart(targetRank);
+  return Math.max(configuredLimit, targetPage + RESULT_SEARCH_LOOKBEHIND_PAGES + 10);
 }
 
 function shouldInspectEveryResultPage(resultPageLimit) {
@@ -1773,12 +1940,44 @@ function resultSearchStartPageForRank(rank) {
   return Math.max(1, targetPage - RESULT_SEARCH_LOOKBEHIND_PAGES);
 }
 
+// 예상 시작 페이지가 1페이지보다 뒤라면 target 근처로 점프한다.
+// 초반 무관 페이지에 검사 횟수를 모두 쓰지 않기 위해서다.
 function shouldUseDirectResultRankJump(targetRank, resultPageLimit) {
   const searchStartPage = resultSearchStartPageForRank(targetRank);
   if (!searchStartPage || searchStartPage <= 1) return false;
-  return resultPageLimit !== 0 || searchStartPage > 10;
+  return true;
 }
 
+// 본격 Result 탐색 전에 target rank 근처로 이동한다.
+// 먼저 직접 페이지 번호 클릭을 시도하고, 숨은 페이지는 pagination 창을 넘겨 도달한다.
+async function navigateToResultSearchStartPage(page, targetRank, resultPageLimit) {
+  const searchStartPageNumber = shouldUseDirectResultRankJump(targetRank, resultPageLimit) ? resultSearchStartPageForRank(targetRank) : null;
+  let resultPageNumber = 1;
+  let directPageClicked = false;
+
+  if (!searchStartPageNumber || searchStartPageNumber <= 1) {
+    return { resultPageNumber, directPageClicked, searchStartPageNumber };
+  }
+
+  directPageClicked = await clickResultPageNumberThroughPaginationWindow(page, searchStartPageNumber);
+  let activePageNumber = await activeResultPageNumber(page);
+  if (activePageNumber) resultPageNumber = activePageNumber;
+  else if (directPageClicked) resultPageNumber = searchStartPageNumber;
+  directPageClicked = directPageClicked || Boolean(activePageNumber && activePageNumber > 1);
+
+  const maxAttempts = Math.min(Math.max(searchStartPageNumber + 2, 10), 120);
+  for (let attempt = 0; resultPageNumber < searchStartPageNumber && attempt < maxAttempts; attempt += 1) {
+    const advance = await advanceResultPage(page, resultPageNumber, searchStartPageNumber, true);
+    if (!advance.advanced) break;
+    directPageClicked = directPageClicked || advance.directPageClicked;
+    activePageNumber = await activeResultPageNumber(page);
+    resultPageNumber = activePageNumber || advance.resultPageNumber;
+  }
+
+  return { resultPageNumber, directPageClicked, searchStartPageNumber };
+}
+
+// 페이지 이동 중 중복/정체 페이지를 감지하기 위한 시그니처.
 function resultRowsSignature(rows, bodyText) {
   const range = rankRangeForRows(rows || []);
   const rangeKey = range ? `${range.min}-${range.max}` : "no-ranks";
@@ -1793,20 +1992,14 @@ function resultPageSignature(url, rows, bodyText) {
   return `${url || "unknown-url"}::${resultRowsSignature(rows, bodyText)}`;
 }
 
+// 캐시는 cached pages가 target rank 구간을 덮을 때만 안전하다.
 function cachedPagesCoverEvent(cachedPages, event) {
   const targetRank = event.rank;
   if (!targetRank) return false;
-
-  return cachedPages.some((cachedPage) => {
-    const ranks = (cachedPage.rows || [])
-      .map((row) => row.no)
-      .filter((rank) => Number.isFinite(rank));
-    const range = rankRangeForRows(cachedPage.rows || []);
-    if (!range) return false;
-    return range.min > targetRank || (ranks.includes(targetRank) && range.max > targetRank);
-  });
+  return resultPagesCoverTargetRank(cachedPages, targetRank);
 }
 
+// 같은 URL의 서로 다른 pagination 창 정보를 잃지 않도록 캐시 페이지를 병합한다.
 function mergeCachedResultPages(existingPages = [], incomingPages = []) {
   const merged = new Map();
   for (const page of [...existingPages, ...incomingPages]) {
@@ -1829,6 +2022,8 @@ function storeResultPageCache(urlKey, cachedPages) {
 }
 
 // 캐시된 결과 페이지 데이터를 가지고 로컬에서 검증을 수행하는 유틸리티
+// 캐시로 Result 데이터를 평가한다.
+// 캐시 페이지가 목표 순위를 덮기에 부족하면 null을 반환해 실제 페이지를 다시 크롤링한다.
 function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
   const targetRank = event.rank;
   const targetEarnings = event.earnings;
@@ -1854,15 +2049,16 @@ function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
     }
   }
 
+  const cacheCoversTarget = cachedPagesCoverEvent(cachedPages, event);
   const checks = {
     hasFinalResultRows: searchedPages.some((item) => item.rows > 0) || Boolean(foundRow),
     directPageClicked: false,
+    targetRankCovered: !targetRank || Boolean(foundRow) || cacheCoversTarget,
     rankMatches: !targetRank || Boolean(foundRow && foundRow.no === targetRank),
     playerMatches: Boolean(foundRow),
     earningsMatches: targetEarnings === null || targetEarnings === undefined || Boolean(foundRow && foundRow.earnings === targetEarnings)
   };
   const missing = resultMissingChecks(checks);
-  const cacheCoversTarget = cachedPagesCoverEvent(cachedPages, event);
 
   if (missing.length && !cacheCoversTarget) {
     return null;
@@ -1887,10 +2083,13 @@ function evaluateResultFromCachedPages(cachedPages, player, event, urlKey) {
   };
 }
 
-async function extractResultPageData(page, player, event, resultPageLimit) {
+// Result 페이지 핵심 스캐너.
+// 확인한 모든 페이지를 기록하고 순위/선수명/상금을 검증한다.
+// row 누락 결론을 신뢰할 만큼 충분히 확인한 뒤에만 targetRankCovered를 true로 둔다.
+async function extractResultPageData(page, player, event, resultPageLimit, timeout = 30000) {
   const targetRank = event.rank;
   const targetEarnings = event.earnings;
-  const pageInspectionLimit = resultPageInspectionLimit(resultPageLimit);
+  const pageInspectionLimit = effectiveResultPageInspectionLimit(resultPageLimit, targetRank);
   const inspectEveryPage = shouldInspectEveryResultPage(resultPageLimit);
   const visitedPageContentSignatures = new Set();
   const searchedPages = [];
@@ -1904,17 +2103,13 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
   let resetFromOvershotFirstPage = false;
   const pendingResultPageNumbers = [];
   const gapRecoveryPageNumbers = new Set();
-  const searchStartPageNumber = shouldUseDirectResultRankJump(targetRank, resultPageLimit) ? resultSearchStartPageForRank(targetRank) : null;
-
-  if (searchStartPageNumber && searchStartPageNumber > 1) {
-    directPageClicked = await clickResultPageNumberThroughPaginationWindow(page, searchStartPageNumber);
-    const activePageNumber = await activeResultPageNumber(page);
-    if (activePageNumber) resultPageNumber = activePageNumber;
-    else if (directPageClicked) resultPageNumber = searchStartPageNumber;
-    directPageClicked = directPageClicked || Boolean(activePageNumber && activePageNumber > 1);
-  }
+  const searchStart = await navigateToResultSearchStartPage(page, targetRank, resultPageLimit);
+  resultPageNumber = searchStart.resultPageNumber;
+  directPageClicked = searchStart.directPageClicked;
 
   for (let pageIndex = 1; pageIndex <= pageInspectionLimit; pageIndex += 1) {
+    // 각 반복은 이동 전에 현재 페이지를 저장한다.
+    // 리포트의 searchedPages/rankRange가 실제 확인 범위를 설명한다.
     const url = page.url();
 
     const rows = await extractFinalResultRows(page);
@@ -1925,7 +2120,15 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
     if (activePageNumber) resultPageNumber = activePageNumber;
     targetGap = targetGap || targetRankGap(previousRange, range, targetRank);
     const pageContentSignature = resultRowsSignature(rows, bodyText);
-    if (visitedPageContentSignatures.has(pageContentSignature)) break;
+    if (visitedPageContentSignatures.has(pageContentSignature)) {
+      // 같은 시그니처가 반복되면 클릭이 전진하지 않았을 가능성이 크다.
+      // pagination 정체로 결론내기 전에 더 강한 전진 경로를 한 번 더 시도한다.
+      const advance = await advanceResultPage(page, resultPageNumber, searchStart.searchStartPageNumber, true);
+      if (!advance.advanced) break;
+      directPageClicked = directPageClicked || advance.directPageClicked;
+      resultPageNumber = advance.resultPageNumber;
+      continue;
+    }
     visitedPageContentSignatures.add(pageContentSignature);
 
     cachedPages.push({ pageIndex, resultPageNumber, url, title, rows, bodyText });
@@ -1942,6 +2145,8 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
 
     if (foundRow) break;
     if (targetRank && range && range.min > targetRank) {
+      // target rank를 지나쳤다. 가능하면 뒤로 이동하고,
+      // 불가능하면 앞쪽 pagination 창 누락을 피하기 위해 1페이지부터 한 번 다시 시작한다.
       const retreat = await retreatResultPage(page, resultPageNumber);
       if (!retreat.advanced) {
         if (!resetFromOvershotFirstPage) {
@@ -1964,15 +2169,17 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
       resultPageNumber = pendingPageNumber;
       continue;
     }
-    const advance = await advanceResultPage(page, resultPageNumber, null, inspectEveryPage);
+    const advance = await advanceResultPage(page, resultPageNumber, searchStart.searchStartPageNumber, inspectEveryPage);
     if (!advance.advanced) break;
     directPageClicked = directPageClicked || advance.directPageClicked;
     resultPageNumber = advance.resultPageNumber;
   }
 
+  const targetRankCovered = !targetRank || Boolean(foundRow) || resultPagesCoverTargetRank(cachedPages, targetRank);
   const checks = {
     hasFinalResultRows: searchedPages.some((item) => item.rows > 0) || Boolean(foundRow),
     directPageClicked,
+    targetRankCovered,
     rankMatches: !targetRank || Boolean(foundRow && foundRow.no === targetRank),
     playerMatches: Boolean(foundRow),
     earningsMatches: targetEarnings === null || targetEarnings === undefined || Boolean(foundRow && foundRow.earnings === targetEarnings)
@@ -1999,6 +2206,8 @@ async function extractResultPageData(page, player, event, resultPageLimit) {
   };
 }
 
+// 알려진 Result URL을 직접 연다.
+// 프로필 row에 href가 있으면 불안정한 UI 클릭보다 이 경로를 우선한다.
 async function crawlResultByUrl(context, player, event, timeout, authWaitMs, resultPageLimit) {
   const urlKey = event.resultUrl;
   
@@ -2025,7 +2234,7 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
     const cachedPages = [];
     const targetRank = event.rank;
     const targetEarnings = event.earnings;
-    const pageInspectionLimit = resultPageInspectionLimit(resultPageLimit);
+    const pageInspectionLimit = effectiveResultPageInspectionLimit(resultPageLimit, targetRank);
     const inspectEveryPage = shouldInspectEveryResultPage(resultPageLimit);
     const visitedPageContentSignatures = new Set();
     const searchedPages = [];
@@ -2038,17 +2247,13 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
     let resetFromOvershotFirstPage = false;
     const pendingResultPageNumbers = [];
     const gapRecoveryPageNumbers = new Set();
-    const searchStartPageNumber = shouldUseDirectResultRankJump(targetRank, resultPageLimit) ? resultSearchStartPageForRank(targetRank) : null;
-
-    if (searchStartPageNumber && searchStartPageNumber > 1) {
-      directPageClicked = await clickResultPageNumberThroughPaginationWindow(page, searchStartPageNumber);
-      const activePageNumber = await activeResultPageNumber(page);
-      if (activePageNumber) resultPageNumber = activePageNumber;
-      else if (directPageClicked) resultPageNumber = searchStartPageNumber;
-      directPageClicked = directPageClicked || Boolean(activePageNumber && activePageNumber > 1);
-    }
+    const searchStart = await navigateToResultSearchStartPage(page, targetRank, resultPageLimit);
+    resultPageNumber = searchStart.resultPageNumber;
+    directPageClicked = searchStart.directPageClicked;
 
     for (let pageIndex = 1; pageIndex <= pageInspectionLimit; pageIndex += 1) {
+      // 직접 Result URL 경로에서도 extractResultPageData와 같은 방식으로 탐색한다.
+      // 동시에 이후 선수/이벤트 재사용을 위해 공유 캐시에 페이지를 적재한다.
       const url = page.url();
 
       const rows = await extractFinalResultRows(page);
@@ -2059,7 +2264,15 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
       if (activePageNumber) resultPageNumber = activePageNumber;
       targetGap = targetGap || targetRankGap(previousRange, range, targetRank);
       const pageContentSignature = resultRowsSignature(rows, bodyText);
-      if (visitedPageContentSignatures.has(pageContentSignature)) break;
+      if (visitedPageContentSignatures.has(pageContentSignature)) {
+        // 페이지가 바뀌지 않았다면 pagination 정체로 판단하기 전에
+        // 다른 전진 경로를 한 번 더 시도한다.
+        const advance = await advanceResultPage(page, resultPageNumber, searchStart.searchStartPageNumber, true);
+        if (!advance.advanced) break;
+        directPageClicked = directPageClicked || advance.directPageClicked;
+        resultPageNumber = advance.resultPageNumber;
+        continue;
+      }
       visitedPageContentSignatures.add(pageContentSignature);
 
       // 캐시 페이지 적재
@@ -2078,6 +2291,8 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
 
       if (foundRow) break;
       if (targetRank && range && range.min > targetRank) {
+        // target rank를 지나쳤다. 뒤로 복구하고,
+        // 이전 컨트롤이 없으면 1페이지 reload를 한 번 시도한다.
         const retreat = await retreatResultPage(page, resultPageNumber);
         if (!retreat.advanced) {
           if (!resetFromOvershotFirstPage) {
@@ -2100,7 +2315,7 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
         resultPageNumber = pendingPageNumber;
         continue;
       }
-      const advance = await advanceResultPage(page, resultPageNumber, null, inspectEveryPage);
+      const advance = await advanceResultPage(page, resultPageNumber, searchStart.searchStartPageNumber, inspectEveryPage);
       if (!advance.advanced) break;
       directPageClicked = directPageClicked || advance.directPageClicked;
       resultPageNumber = advance.resultPageNumber;
@@ -2109,9 +2324,11 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
     // 전역 캐시에 저장
     storeResultPageCache(urlKey, cachedPages);
 
+    const targetRankCovered = !targetRank || Boolean(foundRow) || resultPagesCoverTargetRank(cachedPages, targetRank);
     const checks = {
       hasFinalResultRows: searchedPages.some((item) => item.rows > 0) || Boolean(foundRow),
       directPageClicked,
+      targetRankCovered,
       rankMatches: !targetRank || Boolean(foundRow && foundRow.no === targetRank),
       playerMatches: Boolean(foundRow),
       earningsMatches: targetEarnings === null || targetEarnings === undefined || Boolean(foundRow && foundRow.earnings === targetEarnings)
@@ -2142,6 +2359,8 @@ async function crawlResultByUrl(context, player, event, timeout, authWaitMs, res
   }
 }
 
+// 프로필 row 안의 클릭이 필요한 경우를 위한 Result fallback 크롤러.
+// 팝업과 동일 페이지 이동을 모두 지원하고, 최종 Result 페이지는 직접 URL 경로와 같은 스캐너/캐시 흐름에 넣는다.
 async function crawlResultByClick(context, player, event, timeout, authWaitMs, resultPageLimit) {
   const page = await context.newPage();
   try {
@@ -2183,7 +2402,7 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs, r
       await waitForAccessLogin(popup, authWaitMs);
       
       // 팝업 페이지 크롤링 및 결과 캐시 적재
-      const result = await extractResultPageData(popup, player, event, resultPageLimit);
+      const result = await extractResultPageData(popup, player, event, resultPageLimit, timeout);
       storeResultPageCache(finalUrl, result.cachedPages);
       delete result.cachedPages;
 
@@ -2204,7 +2423,7 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs, r
       console.log(`    [Cache Miss via Navigation] 캐시 범위 밖 Result입니다. 실제 페이지를 확인합니다 (${player.name}): ${finalUrl}`);
     }
 
-    const result = await extractResultPageData(page, player, event, resultPageLimit);
+    const result = await extractResultPageData(page, player, event, resultPageLimit, timeout);
     storeResultPageCache(finalUrl, result.cachedPages);
     delete result.cachedPages;
 
@@ -2216,6 +2435,8 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs, r
   }
 }
 
+// 선수 프로필 하나를 끝까지 크롤링한다.
+// 요약, ALL 탭, 지표 탭, Result 페이지, 경고, 결함, 최종 상태를 모두 만든다.
 async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, authWaitMs, maxLoadMore, resultPageLimit, disabledResultMode, standingsSources = []) {
   const page = await context.newPage();
   const warnings = [];
@@ -2236,6 +2457,8 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     const summary = parseSummary(bodyText);
     const { events, expansion } = await expandAllEventRows(page, summary.cashes, maxLoadMore);
     const { comparisonEvents: profileComparisonEvents, overflowEvents, duplicateEvents, strategy: comparisonStrategy } = comparisonEventsForSummary(events, summary);
+    // 요약 비교는 프로필 Cashes 수에 맞춘다.
+    // 초과 수집 row는 리포트에는 남기지만 요약 비교와 Result 검증에는 쓰지 않는다.
     for (const event of duplicateEvents) {
       event.resultSkipped = event.resultSkipped || "건너뜀 (중복 이벤트 row)";
       event.duplicateEvent = true;
@@ -2248,8 +2471,12 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     const skippedUnavailableResultEvents = disabledResultMode === "skip" ? unavailableResultEvents : [];
     const summaryForComparison = summary;
     const comparableEvents = profileComparisonEvents;
-    const tabChecks = await collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode, skippedUnavailableResultEvents);
-    const calculated = calculatedWithVerifiedTabCounts(calculateFromEvents(comparableEvents), summary, tabChecks);
+    const { checks: tabChecks, tabEventsByKey } = await collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode, skippedUnavailableResultEvents);
+    const calculated = calculateFromEvents(comparableEvents);
+    const tabConsistency = compareProfileTabsToAll(calculated, tabChecks);
+    // calculated는 ALL 탭 조건 계산값이다.
+    // tabChecks는 각 지표 탭의 독립 조건 계산값이다.
+    // tabConsistency는 둘 중 하나를 보정값으로 쓰지 않고 두 출처를 서로 비교한다.
 
     if (!events.length) warnings.push("수집된 이벤트 행이 존재하지 않습니다.");
     if (summary.cashes && events.length < summary.cashes) {
@@ -2271,6 +2498,8 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
       duplicateEvents: duplicateEvents.length,
       comparisonStrategy,
       tabChecks,
+      tabConsistency,
+      tabEventsByKey,
       calculated,
       comparisons: [],
       warnings,
@@ -2281,6 +2510,8 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     player.comparisons = compareSummary(player.summaryForComparison || player.summary, player.calculated);
 
     for (const event of unavailableResultEvents) {
+      // 비활성 Result 컨트롤도 프로필 요약 계산에는 포함한다.
+      // Result 결함으로 볼지는 disabledResultMode 설정에 따른다.
       if (disabledResultMode === "fail") {
         event.resultPage = {
           url: event.disabledResultUrl || event.resultUrl || player.url,
@@ -2301,6 +2532,7 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     const rankSkippedResultEvents = [];
 
     for (const event of checkableResultEvents) {
+      // rank limit은 선택 설정이다. 기본값 0은 순위와 관계없이 모든 checkable Result를 검증한다.
       if (resultRankLimit > 0 && event.rank !== null && event.rank > resultRankLimit) {
         event.resultSkipped = `건너뜀 (ResultRankLimit은 ${resultRankLimit}이나 선수의 순위는 ${event.rank})`;
         rankSkippedResultEvents.push(event);
@@ -2312,6 +2544,8 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     const resultEvents = resultLimit > 0 ? rankEligibleResultEvents.slice(0, resultLimit) : rankEligibleResultEvents;
     const resultEventsToSkip = resultLimit > 0 ? rankEligibleResultEvents.slice(resultLimit) : [];
     for (const event of resultEvents) {
+      // 가능하면 href 기반 Result 크롤링을 사용하고, 아니면 프로필 row 컨트롤을 클릭한다.
+      // 두 경로 모두 같은 Result 스캐너를 공유한다.
       event.resultPage = event.resultUrl
         ? await crawlResultByUrl(context, player, event, timeout, authWaitMs, resultPageLimit)
         : await crawlResultByClick(context, player, event, timeout, authWaitMs, resultPageLimit);
@@ -2363,6 +2597,8 @@ function flattenDefects(report) {
   return (report.players || []).flatMap((player) => player.defects?.length ? player.defects : buildDefects(player));
 }
 
+// 리포트 헤더용 실행 요약을 만든다.
+// 중단된 실행도 pending player 수를 보존해 부분 live crawl을 해석하기 쉽게 한다.
 function summarize(report) {
   const players = report.players || [];
   const defects = flattenDefects(report);
@@ -2445,7 +2681,9 @@ function formatKoreanDefectType(type) {
   return {
     "Profile summary mismatch": "프로필 요약 불일치",
     "Profile tab count mismatch": "프로필 탭 개수 불일치",
+    "Profile tab vs ALL mismatch": "프로필 탭/ALL 조건 계산 불일치",
     "Result page mismatch": "Result 페이지 불일치",
+    "Result search incomplete": "Result 탐색 미완료",
     "Crawler warning": "크롤러 경고",
     "Crawler error": "크롤러 오류"
   }[type] || type;
@@ -2457,6 +2695,8 @@ function koreanHtmlPath(htmlPath) {
 }
 
 // 프리미엄 인터랙티브 HTML 템플릿 렌더러 함수
+// 영문/국문 리포트가 같은 HTML 템플릿을 공유한다.
+// 데이터 모델은 같고, 라벨과 일부 문구만 isKo 플래그로 바꾼다.
 function renderReportTemplate(report, isKo) {
   const summary = summarize(report);
   const defects = flattenDefects(report);
@@ -2812,16 +3052,20 @@ function renderReportTemplate(report, isKo) {
                 <h4 style="margin:0 0 10px;">Profile Tabs Integrity</h4>
                 <table style="width:100%;">
                   <thead>
-                    <tr><th>${escapeHtml(t.tabHeader)}</th><th>Label</th><th>Profile Stat</th><th>Actual Count</th><th>Status</th></tr>
+                    <tr><th>${escapeHtml(t.tabHeader)}</th><th>Label</th><th>Profile Stat</th><th>Tab Calc</th><th>ALL Calc</th><th>Status</th></tr>
                   </thead>
                   <tbody>
-                    ${(player.tabChecks || []).map((item) => `<tr>
+                    ${(player.tabChecks || []).map((item) => {
+                      const consistency = (player.tabConsistency || []).find((entry) => entry.key === item.key);
+                      return `<tr>
                       <td><strong>${escapeHtml(isKo ? formatLabel(item.label) : item.label)}</strong></td>
                       <td><code>${escapeHtml(item.selectedTab || "-")}</code></td>
                       <td>${escapeHtml(formatValue(item.label, item.expected))}</td>
                       <td>${escapeHtml(formatValue(item.label, item.actual))}</td>
+                      <td>${escapeHtml(formatValue(item.label, consistency?.allCalculated))}</td>
                       <td><span class="status-badge ${item.status}">${escapeHtml(isKo ? formatStatus(item.status) : item.status)}</span></td>
-                    </tr>`).join("")}
+                    </tr>`;
+                    }).join("")}
                   </tbody>
                 </table>
               </div>
@@ -2961,6 +3205,8 @@ function writeCsv(filePath, rows) {
   fs.writeFileSync(filePath, [headers, ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(","))].map((line) => Array.isArray(line) ? line.join(",") : line).join("\n") + "\n", "utf8");
 }
 
+// 모든 선수 크롤링이 끝나거나 실행이 중단된 뒤 최종 리포트 객체를 만든다.
+// 디버깅과 재개 판단을 위해 pending player 정보를 보존한다.
 function buildCrawlerReport({ startedAt, finishedAt, playersUrl, playerEntries, players, runStatus, interruptedReason = "" }) {
   const completedPlayers = [];
   const pendingPlayers = [];
@@ -3006,6 +3252,8 @@ function writeReportArtifacts(args, report) {
   return koreanHtml;
 }
 
+// 데이터 모델과 pagination edge case를 빠르게 확인하는 로컬 안전망.
+// 브라우저를 띄우지 않으므로 크롤러 로직 변경 후 항상 실행하기 좋다.
 function runSelfTest() {
   const parsedArgs = parseArgs(["--result-rank-limit", "50", "--concurrency", "5", "--disabled-result-mode", "fail"]);
   if (parsedArgs.resultRankLimit !== 50) {
@@ -3023,10 +3271,13 @@ function runSelfTest() {
   if (resultPageInspectionLimit(50) !== 50 || shouldInspectEveryResultPage(50)) {
     throw new Error("Positive result page limit should cap inspected pages");
   }
+  if (effectiveResultPageInspectionLimit(5, 537) < 23 || effectiveResultPageInspectionLimit(5, null) !== 5) {
+    throw new Error("Result page limit should expand when needed to cover the target rank");
+  }
   if (resultSearchStartPageForRank(501) !== 9 || resultSearchStartPageForRank(28) !== null) {
     throw new Error("Result search start page calculation failed");
   }
-  if (!shouldUseDirectResultRankJump(1006, 10) || !shouldUseDirectResultRankJump(1006, 0) || shouldUseDirectResultRankJump(28, 10)) {
+  if (!shouldUseDirectResultRankJump(537, 0) || !shouldUseDirectResultRankJump(1006, 10) || !shouldUseDirectResultRankJump(1006, 0) || shouldUseDirectResultRankJump(28, 10)) {
     throw new Error("Result direct rank jump gating failed");
   }
   if (resultPageNumberForRank(50) !== null || resultPageNumberForRank(51) !== 2 || resultPageNumberForRank(100) !== 2 || resultPageNumberForRangeStart(400) !== 8 || resultPageNumberForRangeStart(401) !== 9) {
@@ -3044,8 +3295,20 @@ function runSelfTest() {
   if (resultRowsResolveTargetRank([{ no: 1 }, { no: 100 }], 100) || resultRowsResolveTargetRank([{ no: 100 }, { no: 100 }], 100)) {
     throw new Error("Tied target ranks should continue across result pages");
   }
+  if (resultPagesCoverTargetRank([{ rows: [{ no: 1 }, { no: 100 }] }], 100) || !resultPagesCoverTargetRank([{ rows: [{ no: 1 }, { no: 100 }] }, { rows: [{ no: 101 }] }], 100)) {
+    throw new Error("Result coverage should require seeing beyond a sparse or tied target rank");
+  }
   if (cachedPagesCoverEvent([{ rows: [{ no: 1 }, { no: 100 }] }], { rank: 100 }) || cachedPagesCoverEvent([{ rows: [{ no: 100 }, { no: 100 }] }], { rank: 100 })) {
     throw new Error("Cached pages ending on tied target rank should not be treated as covering the event");
+  }
+  if (cachedPagesCoverEvent([{ rows: [{ no: 638 }, { no: 692 }] }], { rank: 597 }) || cachedPagesCoverEvent([{ rows: [{ no: 719 }, { no: 781 }] }], { rank: 61 })) {
+    throw new Error("Cached pages after the target rank should not be treated as covering the event");
+  }
+  if (!cachedPagesCoverEvent([{ rows: [{ no: 595 }, { no: 597 }, { no: 598 }] }], { rank: 597 })) {
+    throw new Error("Cached pages spanning beyond the target rank should cover the event");
+  }
+  if (!cachedPagesCoverEvent([{ rows: [{ no: 501 }, { no: 550 }] }, { rows: [{ no: 551 }, { no: 600 }] }], { rank: 537 })) {
+    throw new Error("Cached pages that progress beyond a missing target rank should cover the event");
   }
   const rankGap = targetRankGap({ min: 371, max: 434 }, { min: 500, max: 558 }, 458);
   if (!rankGap || rankGap.start !== 435 || rankGap.end !== 499 || targetRankGap({ min: 371, max: 434 }, { min: 500, max: 558 }, 600)) {
@@ -3147,6 +3410,15 @@ function runSelfTest() {
   if (comparisons.some((item) => item.status !== "pass")) {
     throw new Error(`Self-test comparison failed: ${JSON.stringify(comparisons)}`);
   }
+  const tabConsistency = compareProfileTabsToAll(calculated, [
+    { key: "titles", label: "Title", summaryKey: "titles", selectedTab: "TITLE", actual: 2 },
+    { key: "bracelets", label: "Bracelets", summaryKey: "bracelets", selectedTab: "BRACELETS", actual: 1 },
+    { key: "rings", label: "Rings", summaryKey: "rings", selectedTab: "RINGS", actual: 1 },
+    { key: "finalTables", label: "Final Tables", summaryKey: "finalTables", selectedTab: "FINAL TABLES", actual: 3 }
+  ]);
+  if (tabConsistency.some((item) => item.status !== "pass")) {
+    throw new Error("Profile tab conditional counts should match ALL conditional counts");
+  }
   const overflowSplit = splitEventsByExpectedCashes(events, parseSummary("Title 1 Bracelets 1 Rings 0 Final Tables 2 Cashes 2 Total Earnings $150,000"));
   if (overflowSplit.comparisonEvents.length !== 2 || overflowSplit.overflowEvents.length !== 2 || calculateFromEvents(overflowSplit.comparisonEvents).cashes !== 2) {
     throw new Error("Events beyond profile Cashes should be excluded from comparison totals");
@@ -3237,6 +3509,8 @@ function runSelfTest() {
   console.log("Crawler self-test passed.");
 }
 
+// CLI 진입점.
+// 옵션 파싱, Playwright 실행, standings 수집, 제한된 동시성의 선수 크롤링, 산출물 저장을 담당한다.
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {

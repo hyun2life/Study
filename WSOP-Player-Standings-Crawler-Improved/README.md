@@ -2,6 +2,10 @@
 
 WSOP Player Standings 데이터를 크롤링하고 JSON, CSV, HTML 리포트를 생성하는 자동화 도구입니다.
 
+이 프로젝트는 장기적으로 `WSOP Full Site QA Automation`으로 확장하기 위한 1단계 구현입니다. 현재 범위는 Player Standings와 Player Profile, Result 상세 페이지의 데이터 정합성 검증입니다.
+
+전체 자동화 구조는 상위 작업 공간 [`../WSOP-Full-Site-QA-Automation/`](../WSOP-Full-Site-QA-Automation/)에서 관리합니다. 이 폴더는 그 안의 `player-standings-data-integrity` 모듈 구현체로 봅니다.
+
 ## 팀원 실행 방법
 
 라이브 `wsop.com` 테스트:
