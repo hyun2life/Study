@@ -4,7 +4,7 @@ param(
   [int]$Limit = 10,
   [int]$ResultLimit = 0,
   [int]$ResultRankLimit = 0,
-  [int]$MaxLoadMore = 50,
+  [int]$MaxLoadMore = 100,
   [int]$ResultPageLimit = 0,
   [ValidateSet("skip", "fail", "check")]
   [string]$DisabledResultMode = "skip",

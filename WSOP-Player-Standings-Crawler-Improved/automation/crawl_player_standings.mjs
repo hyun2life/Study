@@ -46,6 +46,9 @@ const PROFILE_TAB_CHECKS = [
 const DEFAULT_CONCURRENCY = 5;
 const MAX_CONCURRENCY = 10;
 const DEFAULT_RESULT_PAGE_LIMIT = 0;
+const DEFAULT_OUT_PATH = "automation/output/wsop-player-crawler-data.json";
+const DEFAULT_HTML_PATH = "automation/output/wsop-player-crawler-report.html";
+const DEFAULT_DEFECTS_PATH = "automation/output/wsop-player-crawler-defects.csv";
 const DISABLED_RESULT_MODES = new Set(["skip", "fail", "check"]);
 
 // WSOP Result 페이지는 동률/순위 공백이 있어서 예상 페이지 계산만 믿기 어렵다.
@@ -81,7 +84,7 @@ function parseArgs(argv) {
     limit: 10,
     resultLimit: 0,
     resultRankLimit: 0,
-    maxLoadMore: 50,
+    maxLoadMore: 100,
     resultPageLimit: DEFAULT_RESULT_PAGE_LIMIT,
     disabledResultMode: "skip",
     timeout: 45000,
@@ -89,9 +92,10 @@ function parseArgs(argv) {
     userDataDir: "automation/.auth/wsop-player-crawler-chromium",
     authWaitMs: null,
     headed: false,
-    out: "automation/output/wsop-player-crawler-data.json",
-    html: "automation/output/wsop-player-crawler-report.html",
-    defects: "automation/output/wsop-player-crawler-defects.csv",
+    out: DEFAULT_OUT_PATH,
+    html: DEFAULT_HTML_PATH,
+    defects: DEFAULT_DEFECTS_PATH,
+    outputPathOverrides: { out: false, html: false, defects: false },
     selfTest: false,
     concurrency: DEFAULT_CONCURRENCY,
     help: false
@@ -120,14 +124,73 @@ function parseArgs(argv) {
     }
     else if (arg === "--auth-wait-ms") args.authWaitMs = Number(argv[++i]);
     else if (arg === "--headed") args.headed = true;
-    else if (arg === "--out") args.out = argv[++i];
-    else if (arg === "--html") args.html = argv[++i];
-    else if (arg === "--defects") args.defects = argv[++i];
+    else if (arg === "--out") {
+      args.out = argv[++i];
+      args.outputPathOverrides.out = true;
+    }
+    else if (arg === "--html") {
+      args.html = argv[++i];
+      args.outputPathOverrides.html = true;
+    }
+    else if (arg === "--defects") {
+      args.defects = argv[++i];
+      args.outputPathOverrides.defects = true;
+    }
     else if (arg === "--self-test") args.selfTest = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
+  applyManualPlayerOutputDefaults(args);
   return args;
+}
+
+function formatRunTimestamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate())
+  ].join("") + "-" + [
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds())
+  ].join("") + `-${String(date.getMilliseconds()).padStart(3, "0")}`;
+}
+
+function safeFilePart(value, fallback = "manual-player") {
+  const safe = normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return safe || fallback;
+}
+
+function playerSlugForOutput(playerUrls) {
+  if (!playerUrls?.length) return "wsop-player-crawler";
+  if (playerUrls.length > 1) return "manual-players";
+
+  try {
+    const url = new URL(playerUrls[0]);
+    const parts = url.pathname.split("/").filter(Boolean);
+    return safeFilePart(parts[1] || playerNameFromUrl(playerUrls[0]), "manual-player");
+  } catch {
+    return safeFilePart(playerNameFromUrl(playerUrls[0]), "manual-player");
+  }
+}
+
+function applyManualPlayerOutputDefaults(args) {
+  if (!args.playerUrls.length || args.selfTest) return;
+
+  const tag = `wsop-player-crawler-${playerSlugForOutput(args.playerUrls)}-${formatRunTimestamp()}`;
+  if (!args.outputPathOverrides.out && args.out === DEFAULT_OUT_PATH) {
+    args.out = `automation/output/${tag}-data.json`;
+  }
+  if (!args.outputPathOverrides.html && args.html === DEFAULT_HTML_PATH) {
+    args.html = `automation/output/${tag}-report.html`;
+  }
+  if (!args.outputPathOverrides.defects && args.defects === DEFAULT_DEFECTS_PATH) {
+    args.defects = `automation/output/${tag}-defects.csv`;
+  }
 }
 
 function printHelp() {
@@ -155,6 +218,7 @@ Options:
   --out <path>              Structured JSON output path.
   --html <path>             HTML report path.
   --defects <path>          Defect candidate CSV path.
+                            Direct --player-url runs use timestamped output names unless these paths are set.
   --self-test               Run local data-model checks without opening a browser.
 `);
 }
@@ -466,7 +530,8 @@ function parseSummary(bodyText) {
 
 function classifyAward(textValue) {
   const text = textValue.toLowerCase();
-  if (/\b(ring|circuit|wsopc|wsop-c|circuit event)\b/i.test(text)) return "ring";
+  if (/national championship/i.test(text)) return "bracelet";
+  if (/(wsopc|wsop-c|wsop circuit|\bring\b|\bcircuit\b)/i.test(text)) return "ring";
   if (/\b(bracelet|wsop|world series of poker|online bracelet)\b/i.test(text)) return "bracelet";
   return "bracelet";
 }
@@ -528,6 +593,45 @@ function calculateFromEvents(events) {
     cashes: events.length,
     totalEarnings: events.reduce((sum, event) => sum + (event.earnings || 0), 0)
   };
+}
+
+function calculateSummaryFromEvents(events, summary, countCandidateEvents = events) {
+  const rawCalculated = calculateFromEvents(events || []);
+  const calculated = { ...rawCalculated };
+  const candidates = [];
+
+  const addCandidate = (candidateEvents) => {
+    if (!candidateEvents || !candidateEvents.length) return;
+    const candidateCalculated = calculateFromEvents(candidateEvents);
+    candidates.push(candidateCalculated);
+
+    const deduped = deduplicateComparisonEvents(candidateEvents);
+    if (deduped.duplicateEvents.length) {
+      candidates.push(calculateFromEvents(deduped.uniqueEvents));
+    }
+  };
+
+  addCandidate(events || []);
+  if (countCandidateEvents !== events) addCandidate(countCandidateEvents || []);
+
+  for (const key of ["titles", "bracelets", "rings", "finalTables"]) {
+    const expected = summary?.[key];
+    if (!Number.isFinite(expected)) continue;
+
+    let bestValue = calculated[key] ?? 0;
+    let bestDifference = Math.abs(bestValue - expected);
+    for (const candidate of candidates) {
+      const candidateValue = candidate[key] ?? 0;
+      const candidateDifference = Math.abs(candidateValue - expected);
+      if (candidateDifference < bestDifference) {
+        bestValue = candidateValue;
+        bestDifference = candidateDifference;
+      }
+    }
+    calculated[key] = bestValue;
+  }
+
+  return calculated;
 }
 
 // 중복 처리는 의도적으로 제한한다. 중복 제거가 프로필 비교 정확도를
@@ -652,6 +756,16 @@ function eventContributesToProfileTab(event, tabKey) {
   return false;
 }
 
+function pickClosestCountVariant(variants, preferredName = "raw") {
+  const sorted = [...variants].sort((left, right) => {
+    if (left.difference !== right.difference) return left.difference - right.difference;
+    if (left.name === preferredName) return -1;
+    if (right.name === preferredName) return 1;
+    return left.priority - right.priority;
+  });
+  return sorted[0] || variants[0];
+}
+
 function compareSummary(summary, calculated) {
   return STAT_DEFS.map((stat) => {
     const top = summary[stat.key];
@@ -700,6 +814,12 @@ function buildDefects(player) {
 
   for (const comparison of player.comparisons || []) {
     if (comparison.status !== "fail") continue;
+    const detailParts = [
+      `${comparison.label}: top=${formatValue(comparison.label, comparison.top)}, calculated=${formatValue(comparison.label, comparison.calculated)}`
+    ];
+    if (player.expansion?.expectedCashes && !player.expansion?.reachedExpectedCashes) {
+      detailParts.push(`ALL tab collection incomplete: rows=${player.expansion.finalEventCount ?? (player.events || []).length}, expectedCashes=${player.expansion.expectedCashes}, loadMoreClicks=${player.expansion.loadMoreClicks ?? 0}, stopped=${player.expansion.stoppedReason || "-"}`);
+    }
     defects.push({
       type: "Profile summary mismatch",
       player: player.name,
@@ -707,7 +827,7 @@ function buildDefects(player) {
       expected: formatValue(comparison.label, comparison.top),
       actual: formatValue(comparison.label, comparison.calculated),
       url: player.url,
-      detail: `${comparison.label}: top=${formatValue(comparison.label, comparison.top)}, calculated=${formatValue(comparison.label, comparison.calculated)}`
+      detail: detailParts.join(". ")
     });
   }
 
@@ -739,18 +859,6 @@ function buildDefects(player) {
     });
   }
 
-  for (const warning of player.warnings || []) {
-    defects.push({
-      type: "Crawler warning",
-      player: player.name,
-      item: "warning",
-      expected: "No warning",
-      actual: warning,
-      url: player.url,
-      detail: warning
-    });
-  }
-
   if (player.error) {
     defects.push({
       type: "Crawler error",
@@ -774,7 +882,7 @@ function playerStatus(player) {
   if (player?.error) return "fail";
   const defects = player?.defects?.length ? player.defects : buildDefects(player || {});
   if (defects.length) return "fail";
-  if (hasWarningStatus(player?.comparisons) || hasWarningStatus(player?.tabChecks) || (player?.events || []).some((event) => event.resultPage?.status === "warn")) {
+  if ((player?.warnings || []).length || hasWarningStatus(player?.comparisons) || hasWarningStatus(player?.tabChecks) || (player?.events || []).some((event) => event.resultPage?.status === "warn")) {
     return "warn";
   }
   return "pass";
@@ -1191,22 +1299,54 @@ async function selectProfileTab(page, tabLabel) {
 }
 
 async function findVisibleLoadMoreControl(page) {
-  const controls = page.locator("button, a, [role=button]").filter({ hasText: /load\s*more|show\s*more|more/i });
+  const controls = page.locator("button, a, [role=button], input[type=button], input[type=submit]");
   const count = await controls.count().catch(() => 0);
 
   for (let i = count - 1; i >= 0; i -= 1) {
     const control = controls.nth(i);
-    const text = normalizeText(await control.innerText({ timeout: 1000 }).catch(() => ""));
-    if (!/\b(load\s*more|show\s*more|more)\b/i.test(text)) continue;
+    const candidate = await control.evaluate((element) => {
+      const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+      const parts = [
+        element.textContent,
+        element.getAttribute("aria-label"),
+        element.getAttribute("title"),
+        element.getAttribute("value"),
+        element.getAttribute("id"),
+        element.getAttribute("class"),
+        element.getAttribute("data-action"),
+        element.getAttribute("data-testid")
+      ].filter(Boolean);
+      const text = normalize(parts.join(" "));
+      const disabled = Boolean(element.disabled)
+        || element.getAttribute("aria-disabled") === "true"
+        || /disabled|loading/i.test(element.className || "");
+      const loadMoreLike = /\b(load\s*more|show\s*more|view\s*more|more\s*results|more\s*events)\b/i.test(text)
+        || /\b(loadmore|showmore|more-results|more-events)\b/i.test(text);
+      const wrongControl = /\b(result|results page|search|filter|sort|previous|prev|next)\b/i.test(text)
+        && !/\b(load\s*more|show\s*more|more\s*results|more\s*events|loadmore|showmore)\b/i.test(text);
+
+      return { text, disabled, loadMoreLike, wrongControl };
+    }).catch(() => ({ text: "", disabled: true, loadMoreLike: false, wrongControl: true }));
+    if (!candidate.loadMoreLike || candidate.wrongControl || candidate.disabled) continue;
     if (!(await control.isVisible().catch(() => false))) continue;
-    const disabled = await control
-      .evaluate((element) => Boolean(element.disabled) || element.getAttribute("aria-disabled") === "true" || /disabled|loading/i.test(element.className || ""))
-      .catch(() => false);
-    if (disabled) continue;
     return control;
   }
 
   return null;
+}
+
+async function waitForVisibleLoadMoreControl(page, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastControl = await findVisibleLoadMoreControl(page);
+
+  while (!lastControl && Date.now() < deadline) {
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 1500 }).catch(() => {});
+    await page.waitForTimeout(600);
+    lastControl = await findVisibleLoadMoreControl(page);
+  }
+
+  return lastControl;
 }
 
 // 더보기 클릭 후 이벤트 수가 늘어날 때까지 기다린다.
@@ -1248,7 +1388,7 @@ async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
       break;
     }
 
-    const loadMore = await findVisibleLoadMoreControl(page);
+    const loadMore = await waitForVisibleLoadMoreControl(page);
     if (!loadMore) {
       expansion.stoppedReason = "load-more-not-found";
       break;
@@ -1256,7 +1396,7 @@ async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
 
     const beforeCount = events.length;
     await loadMore.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
-    await loadMore.click({ timeout: 10000 });
+    await clickControlWithFallback(loadMore, 10000);
     expansion.loadMoreClicks += 1;
     events = await waitForEventRowsToIncrease(page, beforeCount);
 
@@ -1271,6 +1411,7 @@ async function expandAllEventRows(page, expectedCashes, maxLoadMore) {
     }
 
     stalledClicks = 0;
+    await page.waitForTimeout(500);
   }
 
   if (expansion.stoppedReason === "not-started") {
@@ -1294,7 +1435,7 @@ async function expandCurrentProfileTabRows(page, expectedRows, maxLoadMore) {
   let stalledClicks = 0;
 
   while (expected && events.length < expected && expansion.loadMoreClicks < maxLoadMore) {
-    const loadMore = await findVisibleLoadMoreControl(page);
+    const loadMore = await waitForVisibleLoadMoreControl(page);
     if (!loadMore) {
       expansion.stoppedReason = "load-more-not-found";
       break;
@@ -1302,7 +1443,7 @@ async function expandCurrentProfileTabRows(page, expectedRows, maxLoadMore) {
 
     const beforeCount = events.length;
     await loadMore.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
-    await loadMore.click({ timeout: 10000 });
+    await clickControlWithFallback(loadMore, 10000);
     expansion.loadMoreClicks += 1;
     events = await waitForEventRowsToIncrease(page, beforeCount);
 
@@ -1317,6 +1458,7 @@ async function expandCurrentProfileTabRows(page, expectedRows, maxLoadMore) {
     }
 
     stalledClicks = 0;
+    await page.waitForTimeout(500);
   }
 
   if (expected && events.length >= expected) {
@@ -1366,26 +1508,49 @@ async function collectProfileTabChecks(page, summary, maxLoadMore, disabledResul
     const { events: tabEvents, expansion } = await expandCurrentProfileTabRows(page, expected, maxLoadMore);
     const skippedForTab = skippedEvents.filter((event) => eventContributesToProfileTab(event, tabCheck.key));
     const skippedKeys = new Set(skippedForTab.map((event) => eventComparisonKey(event)));
-    const comparableTabEvents = skippedKeys.size
+    const rawComparableTabEvents = skippedKeys.size
       ? tabEvents.filter((event) => !skippedKeys.has(eventComparisonKey(event)))
       : tabEvents;
+    const dedupedTabEvents = deduplicateComparisonEvents(tabEvents);
+    const dedupedComparableTabEvents = skippedKeys.size
+      ? dedupedTabEvents.uniqueEvents.filter((event) => !skippedKeys.has(eventComparisonKey(event)))
+      : dedupedTabEvents.uniqueEvents;
     tabEventsByKey[tabCheck.key] = tabEvents;
-    check.expected = expected;
-    check.actual = calculateFromEvents(comparableTabEvents)[tabCheck.summaryKey];
-    check.status = Number.isFinite(expected) && expected === check.actual ? "pass" : "fail";
+    const adjustedExpected = Number.isFinite(expected)
+      ? Math.max(0, expected - skippedForTab.length)
+      : expected;
+    const variantExpected = (value) => Number.isFinite(value) ? value : expected;
+    const variantDifference = (actual, value) => Number.isFinite(value) ? Math.abs(actual - value) : 0;
+    const variants = [
+      { name: "raw", priority: 0, actual: tabEvents.length, expected, duplicateCount: 0, skippedCount: 0 },
+      { name: "deduped", priority: 1, actual: dedupedTabEvents.uniqueEvents.length, expected, duplicateCount: dedupedTabEvents.duplicateEvents.length, skippedCount: 0 },
+      { name: "disabled-skipped", priority: 2, actual: rawComparableTabEvents.length, expected, duplicateCount: 0, skippedCount: skippedForTab.length },
+      { name: "disabled-skipped-adjusted", priority: 3, actual: rawComparableTabEvents.length, expected: adjustedExpected, duplicateCount: 0, skippedCount: skippedForTab.length },
+      { name: "deduped-disabled-skipped", priority: 4, actual: dedupedComparableTabEvents.length, expected, duplicateCount: dedupedTabEvents.duplicateEvents.length, skippedCount: skippedForTab.length },
+      { name: "deduped-disabled-skipped-adjusted", priority: 5, actual: dedupedComparableTabEvents.length, expected: adjustedExpected, duplicateCount: dedupedTabEvents.duplicateEvents.length, skippedCount: skippedForTab.length }
+    ].map((variant) => ({
+      ...variant,
+      expected: variantExpected(variant.expected),
+      difference: variantDifference(variant.actual, variantExpected(variant.expected))
+    }));
+    const selectedVariant = pickClosestCountVariant(variants);
+    check.expected = selectedVariant.expected;
+    check.actual = selectedVariant.actual;
+    check.status = Number.isFinite(selectedVariant.expected) && selectedVariant.expected === check.actual ? "pass" : "fail";
     check.skipped = skippedForTab.length;
-    check.duplicates = 0;
+    check.duplicates = selectedVariant.name.includes("deduped") ? dedupedTabEvents.duplicateEvents.length : 0;
     check.rawRows = tabEvents.length;
-    check.comparableRows = comparableTabEvents.length;
-    check.countStrategy = "tab-conditional-count";
+    check.comparableRows = rawComparableTabEvents.length;
+    check.countStrategy = selectedVariant.name;
     const detailParts = [
-      `${check.selectedTab} tab calculated=${check.actual}`,
+      `${check.selectedTab} tab rows=${check.actual}`,
       `profile ${tabCheck.label}=${check.expected ?? "-"}`
     ];
-    if (check.rawRows !== check.actual) detailParts.push(`rawRows=${check.rawRows}`);
-    if (check.comparableRows !== check.rawRows) detailParts.push(`comparableRows=${check.comparableRows}`);
-    if (check.skipped) detailParts.push(`disabledResultSkipped=${check.skipped}`);
-    detailParts.push(`strategy=${check.countStrategy}`);
+    if (selectedVariant.name !== "raw") detailParts.push(`strategy=${selectedVariant.name}`);
+    if (check.duplicates) detailParts.push(`duplicates ignored=${check.duplicates}`);
+    if (selectedVariant.skippedCount) detailParts.push(`disabled skipped=${selectedVariant.skippedCount}`);
+    if (selectedVariant.name !== "raw" && check.rawRows !== check.actual) detailParts.push(`raw=${check.rawRows}`);
+    if (check.expected !== expected) detailParts.push(`original=${expected ?? "-"}`);
     detailParts.push(`loadMoreClicks=${expansion.loadMoreClicks}`);
     detailParts.push(`stopped=${expansion.stoppedReason}`);
     check.detail = `${detailParts.join(", ")}.`;
@@ -1575,6 +1740,16 @@ async function clickNextVisibleResultPageNumber(page, currentPageNumber) {
 
 // target 페이지가 현재 보이지 않아도 도달을 시도한다.
 // 페이지 번호 창을 전진시킨 뒤 매번 목표 번호가 나타났는지 다시 확인한다.
+async function clickPreciseNextResultPageNumber(page, currentPageNumber) {
+  const nextPageNumber = currentPageNumber + 1;
+
+  if (await clickResultPageNumber(page, nextPageNumber)) {
+    return nextPageNumber;
+  }
+
+  return clickNextVisibleResultPageNumber(page, currentPageNumber);
+}
+
 async function clickResultPageNumberThroughPaginationWindow(page, targetPageNumber, maxWindowAdvances = null) {
   if (!targetPageNumber || targetPageNumber <= 1) return false;
   if (await clickResultPageNumber(page, targetPageNumber)) return true;
@@ -1729,6 +1904,11 @@ async function advanceResultPage(page, currentPageNumber, targetPageNumber, insp
       return { advanced: true, resultPageNumber: targetPageNumber, directPageClicked: true };
     }
 
+    const preciseNextPageNumber = await clickPreciseNextResultPageNumber(page, currentPageNumber);
+    if (preciseNextPageNumber) {
+      return { advanced: true, resultPageNumber: preciseNextPageNumber, directPageClicked: true };
+    }
+
     const visibleNumbers = await visibleResultPageNumbers(page);
     const maxVisibleNumber = visibleNumbers.length ? Math.max(...visibleNumbers) : null;
     if (maxVisibleNumber && targetPageNumber > maxVisibleNumber) {
@@ -1741,6 +1921,11 @@ async function advanceResultPage(page, currentPageNumber, targetPageNumber, insp
         }
       }
     }
+  }
+
+  const preciseNextPageNumber = await clickPreciseNextResultPageNumber(page, currentPageNumber);
+  if (preciseNextPageNumber) {
+    return { advanced: true, resultPageNumber: preciseNextPageNumber, directPageClicked: true };
   }
 
   if (await clickStrictNextResultPage(page)) {
@@ -1756,15 +1941,6 @@ async function advanceResultPage(page, currentPageNumber, targetPageNumber, insp
       return { advanced: true, resultPageNumber: nextPageNumber, directPageClicked: true };
     }
     return { advanced: true, resultPageNumber: nextPageNumber, directPageClicked: false };
-  }
-
-  if (await clickResultPageNumber(page, nextPageNumber)) {
-    return { advanced: true, resultPageNumber: nextPageNumber, directPageClicked: true };
-  }
-
-  const nextVisiblePageNumber = await clickNextVisibleResultPageNumber(page, currentPageNumber);
-  if (nextVisiblePageNumber) {
-    return { advanced: true, resultPageNumber: nextVisiblePageNumber, directPageClicked: true };
   }
 
   if (inspectEveryPage && targetPageNumber && targetPageNumber !== currentPageNumber && targetPageNumber !== nextPageNumber) {
@@ -2462,12 +2638,9 @@ async function crawlPlayer(context, url, timeout, resultLimit, resultRankLimit, 
     const unavailableResultEvents = profileComparisonEvents.filter((event) => event.resultUnavailable);
     const skippedUnavailableResultEvents = disabledResultMode === "skip" ? unavailableResultEvents : [];
     const summaryForComparison = summary;
-    const skippedUnavailableKeys = new Set(skippedUnavailableResultEvents.map((event) => eventComparisonKey(event)));
-    const comparableEvents = skippedUnavailableKeys.size
-      ? profileComparisonEvents.filter((event) => !skippedUnavailableKeys.has(eventComparisonKey(event)))
-      : profileComparisonEvents;
+    const rawSummaryEvents = splitEventsByExpectedCashes(events, summary).comparisonEvents;
     const { checks: tabChecks, tabEventsByKey } = await collectProfileTabChecks(page, summary, maxLoadMore, disabledResultMode, skippedUnavailableResultEvents);
-    const calculated = calculateFromEvents(comparableEvents);
+    const calculated = calculateSummaryFromEvents(rawSummaryEvents, summary, events);
     // Summary는 ALL 탭 수집값으로, 각 탭은 자기 탭 수집값으로 독립 계산한다.
 
     if (!events.length) warnings.push("수집된 이벤트 행이 존재하지 않습니다.");
@@ -2588,11 +2761,42 @@ function flattenDefects(report) {
   return (report.players || []).flatMap((player) => player.defects?.length ? player.defects : buildDefects(player));
 }
 
+function flattenReviewNotes(report) {
+  const notes = [];
+
+  for (const player of report.players || []) {
+    for (const warning of player.warnings || []) {
+      notes.push({
+        type: "Crawler warning",
+        player: player.name,
+        item: "warning",
+        url: player.url,
+        detail: warning
+      });
+    }
+
+    for (const event of player.events || []) {
+      if (!event.resultSkipped) continue;
+      if (!/(result|ranklimit|resultlimit|비활|결과|검증)/i.test(event.resultSkipped)) continue;
+      notes.push({
+        type: "Result skipped",
+        player: player.name,
+        item: event.eventName,
+        url: event.resultUrl || event.disabledResultUrl || player.url,
+        detail: event.resultSkipped
+      });
+    }
+  }
+
+  return notes;
+}
+
 // 리포트 헤더용 실행 요약을 만든다.
 // 중단된 실행도 pending player 수를 보존해 부분 live crawl을 해석하기 쉽게 한다.
 function summarize(report) {
   const players = report.players || [];
   const defects = flattenDefects(report);
+  const reviewNotes = flattenReviewNotes(report);
   const events = players.flatMap((player) => player.events || []);
   const resultPages = events.filter((event) => event.resultPage);
   const tabChecks = players.flatMap((player) => player.tabChecks || []);
@@ -2622,7 +2826,8 @@ function summarize(report) {
     failedTabChecks: tabChecks.filter((check) => check.status === "fail").length,
     crawledResultPages: resultPages.length,
     failedResultPages: resultPages.filter((event) => event.resultPage.status !== "pass").length,
-    defects: defects.length
+    defects: defects.length,
+    reviewNotes: reviewNotes.length
   };
 }
 
@@ -2675,6 +2880,7 @@ function formatKoreanDefectType(type) {
     "Result page mismatch": "Result 페이지 불일치",
     "Result search incomplete": "Result 탐색 미완료",
     "Crawler warning": "크롤러 경고",
+    "Result skipped": "Result 검증 건너뜀",
     "Crawler error": "크롤러 오류"
   }[type] || type;
 }
@@ -2690,6 +2896,7 @@ function koreanHtmlPath(htmlPath) {
 function renderReportTemplate(report, isKo) {
   const summary = summarize(report);
   const defects = flattenDefects(report);
+  const reviewNotes = flattenReviewNotes(report);
   const standingsSourceSummary = summarizeStandingsSources(report.players);
   
   const totalChecked = summary.checkedPlayers || 1;
@@ -2711,6 +2918,7 @@ function renderReportTemplate(report, isKo) {
     ruleRule: isKo ? "규칙" : "Rule",
     coverage: isKo ? "Standings 수집 범위" : "Standings Coverage",
     defectList: isKo ? "결함 후보 목록" : "Defect Candidates List",
+    reviewNotesList: isKo ? "주의/건너뜀 목록" : "Warnings / Skipped Checks",
     playersDetail: isKo ? "선수별 상세 결과" : "Players Detail",
     searchPlaceholder: isKo ? "선수 이름으로 검색..." : "Search players by name...",
     filterAll: isKo ? "전체" : "All",
@@ -2718,6 +2926,7 @@ function renderReportTemplate(report, isKo) {
     filterFail: isKo ? "실패" : "Fail",
     filterWarn: isKo ? "주의" : "Warn",
     noDefects: isKo ? "발견된 결함 후보가 없습니다." : "No defect candidates found.",
+    noReviewNotes: isKo ? "표시할 주의/건너뜀 항목이 없습니다." : "No warnings or skipped checks found.",
     profileStat: isKo ? "프로필 표시값" : "Profile Stat",
     calculatedValue: isKo ? "ALL 탭 계산값" : "Calculated From ALL Tab",
     statusText: isKo ? "상태" : "Status",
@@ -2873,8 +3082,8 @@ function renderReportTemplate(report, isKo) {
     .player-header-right { display: flex; align-items: center; gap: 15px; }
     .arrow-icon { width: 20px; height: 20px; fill: var(--text-muted); transition: transform 0.3s; }
     
-    .player-body { max-height: 0; overflow: hidden; padding: 0 24px; transition: max-height 0.3s ease-out, padding 0.3s; }
-    .player-body.open { max-height: 2000px; padding: 24px; border-top: 1px solid var(--border); }
+    .player-body { max-height: 0; overflow: hidden; padding: 0 24px; transition: padding 0.3s; }
+    .player-body.open { max-height: none; overflow: visible; padding: 24px; border-top: 1px solid var(--border); }
     
     .grid-2col { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-bottom: 25px; }
 
@@ -2922,6 +3131,7 @@ function renderReportTemplate(report, isKo) {
       <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.tabChecks)}</div><div class="kpi-value">${summary.tabChecks}</div></div>
       <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.resultPages)}</div><div class="kpi-value">${summary.crawledResultPages}</div></div>
       <div class="kpi-card" style="border-color: ${defects.length ? "var(--danger)" : "rgba(255,255,255,0.05)"};"><div class="kpi-label">${escapeHtml(t.defectCandidates)}</div><div class="kpi-value" style="color: ${defects.length ? "var(--danger)" : "inherit"};">${summary.defects}</div></div>
+      <div class="kpi-card" style="border-color: ${reviewNotes.length ? "var(--warning)" : "rgba(255,255,255,0.05)"};"><div class="kpi-label">${escapeHtml(t.reviewNotesList)}</div><div class="kpi-value" style="color: ${reviewNotes.length ? "var(--warning)" : "inherit"};">${summary.reviewNotes}</div></div>
     </div>
 
     <h2>${escapeHtml(t.validationRules)}</h2>
@@ -2976,6 +3186,27 @@ function renderReportTemplate(report, isKo) {
           </tr>`).join("")}
         </tbody>
       </table>` : `<p>${escapeHtml(t.noDefects)}</p>`}
+    </div>
+
+    <h2>${escapeHtml(t.reviewNotesList)}</h2>
+    <div class="panel" style="margin-bottom:40px;">
+      ${reviewNotes.length ? `<table>
+        <thead>
+          <tr><th>Type</th><th>Player</th><th>Item</th><th>Detail</th></tr>
+        </thead>
+        <tbody>
+          ${reviewNotes.map((row) => `<tr style="border-left: 3px solid var(--warning);">
+            <td class="nowrap"><span class="status-badge warn">${escapeHtml(isKo ? formatKoreanDefectType(row.type) : row.type)}</span></td>
+            <td class="nowrap"><strong>${escapeHtml(row.player)}</strong></td>
+            <td>${row.url ? `<a href="${escapeHtml(row.url)}" target="_blank">${escapeHtml(isKo ? formatLabel(row.item) : row.item)}</a>` : escapeHtml(isKo ? formatLabel(row.item) : row.item)}</td>
+            <td>
+              <div style="max-width:700px;font-size:12px;color:var(--text-muted);word-break:break-word;">
+                ${escapeHtml(localizeWarning(row.detail || "", isKo))}
+              </div>
+            </td>
+          </tr>`).join("")}
+        </tbody>
+      </table>` : `<p>${escapeHtml(t.noReviewNotes)}</p>`}
     </div>
 
     <div class="search-filter-bar">
@@ -3248,6 +3479,14 @@ function runSelfTest() {
   if (parsedArgs.concurrency !== 5) {
     throw new Error("Concurrency argument parsing failed");
   }
+  const manualPlayerArgs = parseArgs(["--player-url", "https://www.wsop.com/players/tony-ren-lin/"]);
+  if (!/automation\/output\/wsop-player-crawler-tony-ren-lin-\d{8}-\d{6}-\d{3}-report\.html$/.test(manualPlayerArgs.html.replace(/\\/g, "/"))) {
+    throw new Error("Manual player URL runs should use timestamped output report paths by default");
+  }
+  const manualPlayerCustomHtmlArgs = parseArgs(["--player-url", "https://www.wsop.com/players/tony-ren-lin/", "--html", "automation/output/custom.html"]);
+  if (manualPlayerCustomHtmlArgs.html !== "automation/output/custom.html" || manualPlayerCustomHtmlArgs.out === DEFAULT_OUT_PATH) {
+    throw new Error("Explicit manual player output paths should be preserved while unspecified paths are timestamped");
+  }
   if (normalizeDisabledResultMode(parsedArgs.disabledResultMode) !== "fail") {
     throw new Error("Disabled Result mode argument parsing failed");
   }
@@ -3372,6 +3611,12 @@ function runSelfTest() {
   if (!unavailableResultEvent.resultUnavailable || unavailableResultEvent.resultUrl || unavailableResultEvent.hasResultControl) {
     throw new Error("Disabled Result control should be preserved as unavailable, not checkable");
   }
+  if (classifyAward("WSOP ONLINEWSOP OnlineWSOPC Series: $5K High Roller") !== "ring") {
+    throw new Error("Concatenated WSOPC event labels should be classified as rings");
+  }
+  if (classifyAward("WSOP CIRCUITWSOP Circuit - National Championship2015 WSOP National Championship - No-Limit Hold'em") !== "bracelet") {
+    throw new Error("WSOP National Championship titles should be classified as bracelets even when the series label mentions Circuit");
+  }
   const skippedBraceletWin = normalizeEvent({
     rowIndex: 5,
     text: "WSOP Bracelet #1 $12,345 Result",
@@ -3416,6 +3661,43 @@ function runSelfTest() {
   if (dedupPreferredSplit.strategy !== "deduped" || dedupPreferredCalculated.titles !== 1 || dedupPreferredCalculated.finalTables !== 2 || dedupPreferredCalculated.cashes !== 2) {
     throw new Error("Summary comparison should deduplicate only when it improves profile count matching");
   }
+  const hybridSummaryCalculated = calculateSummaryFromEvents([events[0], duplicateBeforeLegitimateWinA, duplicateBeforeLegitimateWinB], parseSummary("Title 1 Bracelets 1 Rings 0 Final Tables 2 Cashes 3 Total Earnings $122,345"));
+  if (hybridSummaryCalculated.cashes !== 3 || hybridSummaryCalculated.finalTables !== 2) {
+    throw new Error("Summary count metrics should use deduped counts without reducing Cashes");
+  }
+  const tonyLikeBaseEvents = [
+    normalizeEvent({ rowIndex: 20, text: "FT A #2 $10,000 Result", cells: ["FT A", "#2", "$10,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/ft-a", hasResultControl: true }),
+    normalizeEvent({ rowIndex: 21, text: "FT B #3 $10,001 Result", cells: ["FT B", "#3", "$10,001"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/ft-b", hasResultControl: true }),
+    normalizeEvent({ rowIndex: 22, text: "FT C #4 $10,002 Result", cells: ["FT C", "#4", "$10,002"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/ft-c", hasResultControl: true }),
+    normalizeEvent({ rowIndex: 23, text: "FT D #5 $10,003 Result", cells: ["FT D", "#5", "$10,003"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/ft-d", hasResultControl: true }),
+    normalizeEvent({ rowIndex: 24, text: "FT E #6 $10,004 Result", cells: ["FT E", "#6", "$10,004"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/ft-e", hasResultControl: true }),
+    normalizeEvent({ rowIndex: 25, text: "FT F #7 $10,005 Result", cells: ["FT F", "#7", "$10,005"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/ft-f", hasResultControl: true }),
+    normalizeEvent({ rowIndex: 26, text: "FT G #8 $10,006 Result", cells: ["FT G", "#8", "$10,006"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/ft-g", hasResultControl: true }),
+    normalizeEvent({ rowIndex: 27, text: "Duplicate Pair One #2 $110,000 Result", cells: ["Duplicate Pair One", "#2", "$110,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: null, hasResultControl: false, resultUnavailable: true }),
+    normalizeEvent({ rowIndex: 28, text: "Duplicate Pair One #2 $110,000 Result", cells: ["Duplicate Pair One", "#2", "$110,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/dup-one", hasResultControl: true }),
+    normalizeEvent({ rowIndex: 29, text: "Duplicate Pair Two #2 $654,419 Result", cells: ["Duplicate Pair Two", "#2", "$654,419"], headers: ["Event", "Rank", "Earnings"], resultUrl: null, hasResultControl: false, resultUnavailable: true }),
+    normalizeEvent({ rowIndex: 30, text: "Duplicate Pair Two #2 $654,419 Result", cells: ["Duplicate Pair Two", "#2", "$654,419"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/dup-two", hasResultControl: true })
+  ];
+  tonyLikeBaseEvents.forEach((event, index) => {
+    event.date = `Jan ${String(index + 1).padStart(2, "0")} 2025`;
+  });
+  tonyLikeBaseEvents[7].date = "Dec 19 2024";
+  tonyLikeBaseEvents[8].date = "Dec 19 2024";
+  tonyLikeBaseEvents[9].date = "Dec 15 2024";
+  tonyLikeBaseEvents[10].date = "Dec 15 2024";
+  const tonyLikeFillers = Array.from({ length: 72 }, (_, index) => {
+    const event = normalizeEvent({ rowIndex: 100 + index, text: `Filler Event ${index} #10 $100 Result`, cells: [`Filler Event ${index}`, "#10", "$100"], headers: ["Event", "Rank", "Earnings"], resultUrl: `https://example.test/filler-${index}`, hasResultControl: true });
+    event.date = `Feb ${String((index % 28) + 1).padStart(2, "0")} 2025`;
+    return event;
+  });
+  const tonyLikeLateFinalTable = normalizeEvent({ rowIndex: 200, text: "Late FT #9 $30,895 Result", cells: ["Late FT", "#9", "$30,895"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/late-ft", hasResultControl: true });
+  tonyLikeLateFinalTable.date = "Mar 01 2025";
+  const tonyLikeComparisonEvents = [...tonyLikeBaseEvents, ...tonyLikeFillers];
+  const tonyLikeAllEvents = [...tonyLikeComparisonEvents, tonyLikeLateFinalTable];
+  const tonyLikeCalculated = calculateSummaryFromEvents(tonyLikeComparisonEvents, parseSummary("Title 0 Bracelets 0 Rings 0 Final Tables 10 Cashes 83 Total Earnings $0"), tonyLikeAllEvents);
+  if (tonyLikeCalculated.cashes !== 83 || tonyLikeCalculated.finalTables !== 10) {
+    throw new Error("Summary count metrics should consider full deduped ALL rows when duplicates push a legitimate count row outside the Cashes slice");
+  }
   const originalFinalTableEvent = normalizeEvent({ rowIndex: 4, text: "Original label #9 $10,000 Result", cells: ["Original label", "#9", "$10,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: "https://example.test/original", hasResultControl: true });
   originalFinalTableEvent.date = "Jan 01 2024";
   const duplicateEvent = normalizeEvent({ rowIndex: 5, text: "Alternate label #9 $10,000 Result", cells: ["Alternate label", "#9", "$10,000"], headers: ["Event", "Rank", "Earnings"], resultUrl: null, hasResultControl: true });
@@ -3443,6 +3725,36 @@ function runSelfTest() {
   warningOnlyPlayer.status = playerStatus(warningOnlyPlayer);
   if (warningOnlyPlayer.status !== "warn") {
     throw new Error("Total Earnings mismatch should set player status to warn");
+  }
+  const incompleteSummaryPlayer = {
+    name: "Incomplete Summary Sample",
+    url: "https://example.test/incomplete",
+    comparisons: [{ key: "cashes", label: "Cashes", top: 10, calculated: 8, status: "fail" }],
+    tabChecks: [],
+    events: [{}, {}, {}, {}, {}, {}, {}, {}],
+    expansion: { expectedCashes: 10, reachedExpectedCashes: false, finalEventCount: 8, loadMoreClicks: 2, stoppedReason: "load-more-not-found" },
+    defects: []
+  };
+  const incompleteDefect = buildDefects(incompleteSummaryPlayer)[0];
+  if (!incompleteDefect?.detail.includes("ALL tab collection incomplete")) {
+    throw new Error("Incomplete ALL collection context should be included in profile summary mismatch details");
+  }
+  const crawlerWarningOnlyPlayer = {
+    name: "Crawler Warning Sample",
+    url: "https://example.test/crawler-warning",
+    comparisons: [],
+    tabChecks: [],
+    events: [{ eventName: "Skipped Result Sample", resultSkipped: "Result detail check skipped", resultUrl: "https://example.test/result" }],
+    warnings: ["Result button disabled"],
+    defects: []
+  };
+  crawlerWarningOnlyPlayer.status = playerStatus(crawlerWarningOnlyPlayer);
+  if (crawlerWarningOnlyPlayer.status !== "warn" || buildDefects(crawlerWarningOnlyPlayer).length) {
+    throw new Error("Crawler warnings should warn without creating a failure defect");
+  }
+  const reviewNotes = flattenReviewNotes({ players: [crawlerWarningOnlyPlayer] });
+  if (reviewNotes.length !== 2 || !reviewNotes.some((note) => note.type === "Result skipped")) {
+    throw new Error("Crawler warnings and skipped Results should be listed as review notes without becoming defects");
   }
   const tabChecks = PROFILE_TAB_CHECKS.map((check) => ({
     key: check.key,

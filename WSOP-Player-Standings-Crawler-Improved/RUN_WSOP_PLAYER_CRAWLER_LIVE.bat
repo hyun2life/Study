@@ -19,7 +19,7 @@ rem DISABLED_RESULT_MODE: skip, fail, or check disabled Result controls.
 set "PLAYER_LIMIT=10"
 set "RESULT_LIMIT=0"
 set "RESULT_RANK_LIMIT=0"
-set "MAX_LOAD_MORE=50"
+set "MAX_LOAD_MORE=100"
 set "RESULT_PAGE_LIMIT=0"
 set "DISABLED_RESULT_MODE=skip"
 set "CONCURRENCY=10"
