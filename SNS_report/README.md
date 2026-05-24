@@ -17,7 +17,7 @@
 ## 폴더 구조
 
 ```text
-discord_report/
+SNS_report/
 |-- discord_report.py
 |-- config.json
 |-- config.example.json
@@ -442,6 +442,19 @@ python discord_report.py --rebuild-daily --force-send-daily
 - 특히 `.env`에는 실제 토큰과 비밀번호가 들어가므로 반드시 `.gitignore`에 포함해야 합니다.
 - 비밀값이 한 번이라도 외부에 노출됐다고 판단되면 즉시 재발급하는 것이 안전합니다.
 - 프로젝트를 다른 사람에게 전달할 때는 `.env.example`, `config.example.json`만 전달하는 방식이 가장 깔끔합니다.
+
+## Git 관리
+
+현재 루트 `.gitignore`는 아래 항목을 저장소에서 제외합니다.
+
+- `SNS_report/.env`
+- `SNS_report/config.json`
+- `SNS_report/state.json`
+- `SNS_report/logs/`
+- `SNS_report/reports/`
+- `SNS_report/__pycache__/`
+
+커밋에는 `discord_report.py`, `README.md`, `config.example.json`, `.env.example`, 실행용 BAT 파일만 포함하는 것을 기본으로 합니다.
 
 ## 배포 체크리스트
 
