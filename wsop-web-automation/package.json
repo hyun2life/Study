@@ -5,6 +5,8 @@
   "description": "Smoke tests for public wsop.com pages",
   "scripts": {
     "test:smoke": "playwright test tests/smoke --project=chromium-desktop",
+    "test:smoke:headed": "playwright test tests/smoke --project=chromium-desktop --headed",
+    "test:smoke:ui": "playwright test tests/smoke --project=chromium-desktop --ui",
     "test:smoke:mobile": "playwright test tests/smoke --project=mobile-chrome",
     "test:smoke:all": "playwright test tests/smoke",
     "report": "playwright show-report",

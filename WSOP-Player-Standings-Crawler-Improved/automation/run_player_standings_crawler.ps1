@@ -17,7 +17,8 @@ param(
   [string]$HtmlReport = "",
   [string]$DefectReport = "",
   [int]$Concurrency = 5,
-  [switch]$Headed
+  [switch]$Headed,
+  [switch]$Ui
 )
 
 $ErrorActionPreference = "Stop"
@@ -189,6 +190,10 @@ function Install-PlaywrightChromium {
 
 Push-Location (Join-Path $PSScriptRoot "..")
 try {
+  if ($Ui) {
+    $env:PWDEBUG = "1"
+    $Headed = $true
+  }
   $safeOutputTag = ($OutputTag -replace '[^A-Za-z0-9._-]', '-').Trim('-')
   $safeRunId = ($RunId -replace '[^A-Za-z0-9._-]', '-').Trim('-')
   if (-not $safeOutputTag) {
