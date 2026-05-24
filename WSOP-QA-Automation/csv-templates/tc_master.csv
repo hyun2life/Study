@@ -1,5 +1,0 @@
-TC ID,대분류,중분류,소분류,TC 제목,테스트 유형,우선순위,자동화 대상,추천 자동화 방식,사전조건,테스트 데이터,테스트 절차,기대결과,검증 포인트,산출물,실행 상태,비고
-TC-SMK-001,App Foundation,Launch,Cold Start,앱 실행 후 crash 없이 첫 화면 도달,Smoke,P0,Y,ADB + Playwright Check,앱 설치 완료,Google Play 앱 또는 QA 빌드,앱 실행 > 첫 화면 확인,Crash 없이 첫 화면이 표시된다,"앱 실행 성공, crash 없음","Screenshot, logcat",Ready,모든 테스트의 출발점
-TC-SMK-002,Account,Login,QA Account,QA 계정으로 로그인,Smoke,P0,Y,Playwright/WebView,QA 계정 사용 가능,QA user,로그인 화면 > 계정 입력 > 로그인,홈/로비에 도달한다,"세션 생성, 홈 진입","Trace, Screenshot",Ready,fixture 후보
-TC-SMK-010,Compliance,Responsible Gaming,Policy Page,책임 게임 페이지 접근,Smoke,P0,Y,Playwright,정책 메뉴 접근 가능,Policy content,책임 게임 메뉴 선택,책임 게임/제한 설정 페이지 표시,정책 페이지 접근,Screenshot,Ready,카지노 앱 핵심 정책
-TC-SMK-011,Wallet,Balance,Wallet Entry,지갑/칩 페이지 접근,Smoke,P0,Y,Playwright + Native Helper,로그인 완료,QA user,지갑/칩 메뉴 선택,잔액 또는 구매 CTA 표시,자산 화면 접근,Screenshot,Ready,실자산 변경 금지

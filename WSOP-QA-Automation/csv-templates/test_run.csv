@@ -1,2 +1,0 @@
-Run ID,Run Name,Start Date,Build/Version,Environment,Device,Scope,Owner,Status,Total TC,Pass,Fail,Blocked,Not Run,Pass Rate,Report Link,Notes
-RUN-2026-001,Initial Smoke Template,2026-05-10,TBD,TBD,Android TBD,P0/P1 Smoke,QA,Planned,16,0,0,0,16,0,,초기 실행 템플릿

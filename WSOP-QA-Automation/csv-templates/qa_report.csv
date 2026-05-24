@@ -1,8 +1,0 @@
-Section,Metric,Value,Formula/Source,Notes
-Run Selector,Run ID,RUN-2026-001,Manual input,리포트를 볼 Run ID
-Summary,Total TC,16,Execution_Log,Run 기준 전체 TC
-Summary,Pass,0,Execution_Log,Pass 수
-Summary,Fail,0,Execution_Log,Fail 수
-Summary,Blocked,0,Execution_Log,Blocked 수
-Summary,Not Run,16,Execution_Log,미실행 수
-Decision,QA Result,In Progress,Calculated,Fail/Blocked/Not Run 기준 초안 판정

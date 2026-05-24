@@ -1,2 +1,0 @@
-# No third-party Python dependencies are required for the current utility set.
-# The image downloader uses Python's standard library only.

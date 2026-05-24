@@ -7,6 +7,7 @@ SNS_report/logs/
 SNS_report/reports/
 SNS_report/__pycache__/
 *.pyc
+.vscode/
 /paintjaengi/
 daughter-emoticons/__pycache__/
 daughter-emoticons/output/**/*.png

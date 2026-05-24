@@ -1006,7 +1006,7 @@ function categoryUrlFor(playersUrl, category) {
 
 async function collectPlayerEntries(page, playersUrl, limit, authWaitMs) {
   if (limit <= 0) return [];
-  
+
   await retryWithBackoff(async () => {
     await page.goto(playersUrl, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle").catch(() => {});
@@ -2376,7 +2376,7 @@ async function extractResultPageData(page, player, event, resultPageLimit, timeo
 // 프로필 row에 href가 있으면 불안정한 UI 클릭보다 이 경로를 우선한다.
 async function crawlResultByUrl(context, player, event, timeout, authWaitMs, resultPageLimit) {
   const urlKey = event.resultUrl;
-  
+
   // 캐시 확인
   if (resultPageRowsCache.has(urlKey)) {
     const cachedResult = evaluateResultFromCachedPages(resultPageRowsCache.get(urlKey), player, event, urlKey);
@@ -2537,7 +2537,7 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs, r
       await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await waitForAccessLogin(page, authWaitMs);
     }, 2, 2000);
-    
+
     await extractEventRows(page);
 
     const row = page.locator(`[data-wsop-crawler-row="${event.rowIndex}"]`);
@@ -2554,7 +2554,7 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs, r
     if (popup) {
       await popup.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
       const finalUrl = popup.url();
-      
+
       // 만약 팝업 URL이 캐시에 있으면 바로 처리하고 팝업 닫기
       if (resultPageRowsCache.has(finalUrl)) {
         const cachedResult = evaluateResultFromCachedPages(resultPageRowsCache.get(finalUrl), player, event, finalUrl);
@@ -2568,7 +2568,7 @@ async function crawlResultByClick(context, player, event, timeout, authWaitMs, r
 
       await popup.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await waitForAccessLogin(popup, authWaitMs);
-      
+
       // 팝업 페이지 크롤링 및 결과 캐시 적재
       const result = await extractResultPageData(popup, player, event, resultPageLimit, timeout);
       storeResultPageCache(finalUrl, result.cachedPages);
@@ -2893,17 +2893,26 @@ function koreanHtmlPath(htmlPath) {
 // 프리미엄 인터랙티브 HTML 템플릿 렌더러 함수
 // 영문/국문 리포트가 같은 HTML 템플릿을 공유한다.
 // 데이터 모델은 같고, 라벨과 일부 문구만 isKo 플래그로 바꾼다.
-function renderReportTemplate(report, isKo) {
+function renderHtml(report) {
+  return renderDashboardTemplate(report, false);
+}
+
+function renderKoreanHtml(report) {
+  return renderDashboardTemplate(report, true);
+}
+
+// 프리미엄 인터랙티브 HTML 대시보드 템플릿
+function renderDashboardTemplate(report, isKo) {
   const summary = summarize(report);
   const defects = flattenDefects(report);
   const reviewNotes = flattenReviewNotes(report);
   const standingsSourceSummary = summarizeStandingsSources(report.players);
-  
+
   const totalChecked = summary.checkedPlayers || 1;
   const passPercent = Math.round((summary.passedPlayers / totalChecked) * 100);
 
   const t = {
-    title: isKo ? "WSOP 선수 순위 크롤러 리포트" : "WSOP Player Standings Crawler Report",
+    title: isKo ? "WSOP 선수 순위 크롤러 프리미엄 대시보드" : "WSOP Player Standings Premium Dashboard",
     generated: isKo ? "생성 시간" : "Generated",
     source: isKo ? "대상 사이트" : "Source",
     runStatus: isKo ? "실행 상태" : "Run Status",
@@ -2913,13 +2922,13 @@ function renderReportTemplate(report, isKo) {
     tabChecks: isKo ? "프로필 탭 검증" : "Profile Tab Checks",
     resultPages: isKo ? "Result 페이지 확인" : "Result Pages Checked",
     defectCandidates: isKo ? "결함 후보" : "Defect Candidates",
-    validationRules: isKo ? "검증 규칙" : "Validation Rules",
+    reviewNotesList: isKo ? "주의/건너뜀 목록" : "Warnings / Skipped Checks",
+    validationRules: isKo ? "검증 규칙 및 기준" : "Validation Rules",
     ruleItem: isKo ? "항목" : "Item",
     ruleRule: isKo ? "규칙" : "Rule",
     coverage: isKo ? "Standings 수집 범위" : "Standings Coverage",
     defectList: isKo ? "결함 후보 목록" : "Defect Candidates List",
-    reviewNotesList: isKo ? "주의/건너뜀 목록" : "Warnings / Skipped Checks",
-    playersDetail: isKo ? "선수별 상세 결과" : "Players Detail",
+    playersDetail: isKo ? "선수별 검증 디렉토리" : "Players Detail",
     searchPlaceholder: isKo ? "선수 이름으로 검색..." : "Search players by name...",
     filterAll: isKo ? "전체" : "All",
     filterPass: isKo ? "통과" : "Pass",
@@ -2941,6 +2950,8 @@ function renderReportTemplate(report, isKo) {
     resultUrlText: isKo ? "Result URL" : "Result URL",
     resultCheckText: isKo ? "Result 확인" : "Result Check",
     finalFindingText: isKo ? "최종 결과 확인 내용" : "Final Result Finding",
+    backToSimple: isKo ? "기존 단순 리포트 보기" : "View Simple Report",
+    searchEventsPlaceholder: isKo ? "이벤트명 검색..." : "Search events...",
     rulesData: isKo ? [
       ["Standings 카테고리", `${STANDINGS_CATEGORIES.map((c) => c.label).join(", ")}에서 상위 선수를 수집합니다.`],
       ["타이틀", "ALL 탭 이벤트 중 Rank가 1인 row를 계산합니다."],
@@ -2964,24 +2975,30 @@ function renderReportTemplate(report, isKo) {
     ]
   };
 
+  const reportJson = JSON.stringify(report).replace(/</g, '\u003c').replace(/>/g, '\u003e');
+
   return `<!doctype html>
 <html lang="${isKo ? "ko" : "en"}">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(t.title)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
       --bg-main: #0b0f19;
-      --bg-card: #151d30;
-      --bg-header: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+      --bg-card: rgba(21, 29, 48, 0.7);
+      --bg-card-hover: rgba(26, 36, 60, 0.85);
       --bg-input: #1f293d;
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --border: rgba(255, 255, 255, 0.08);
       --primary: #8b5cf6;
+      --primary-rgb: 139, 92, 246;
       --primary-hover: #a78bfa;
       --success: #10b981;
       --success-bg: rgba(16, 185, 129, 0.15);
@@ -2991,16 +3008,18 @@ function renderReportTemplate(report, isKo) {
       --warning-bg: rgba(245, 158, 11, 0.15);
       --shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
       --card-border: 1px solid rgba(255, 255, 255, 0.05);
+      --glass-blur: blur(16px);
     }
     body.light-mode {
       --bg-main: #f3f4f6;
-      --bg-card: #ffffff;
-      --bg-header: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+      --bg-card: rgba(255, 255, 255, 0.8);
+      --bg-card-hover: rgba(255, 255, 255, 0.95);
       --bg-input: #ffffff;
       --text-main: #111827;
       --text-muted: #4b5563;
       --border: rgba(0, 0, 0, 0.08);
       --primary: #6d28d9;
+      --primary-rgb: 109, 40, 217;
       --primary-hover: #5b21b6;
       --success: #059669;
       --success-bg: #ecfdf5;
@@ -3012,403 +3031,1187 @@ function renderReportTemplate(report, isKo) {
       --card-border: 1px solid rgba(0, 0, 0, 0.06);
     }
 
-    * { box-sizing: border-box; transition: background-color 0.3s, color 0.3s, border-color 0.3s; }
+    * { box-sizing: border-box; transition: background-color 0.2s, color 0.2s, border-color 0.2s, transform 0.2s; }
     body { margin: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-main); color: var(--text-main); line-height: 1.5; padding-bottom: 60px; }
-    
-    header { background: var(--bg-header); padding: 40px 30px; position: relative; overflow: hidden; border-bottom: var(--card-border); }
-    header::after { content: ''; position: absolute; width: 400px; height: 400px; background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 70%); right: -100px; top: -100px; pointer-events: none; }
-    
-    .header-content { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 30px; flex-wrap: wrap; }
-    .header-title h1 { margin: 0; font-family: 'Outfit', sans-serif; font-size: 32px; font-weight: 800; letter-spacing: -0.5px; }
+
+    header { background: var(--bg-card); backdrop-filter: var(--glass-blur); padding: 30px 40px; position: relative; overflow: hidden; border-bottom: var(--card-border); box-shadow: var(--shadow); }
+    header::after { content: ''; position: absolute; width: 400px; height: 400px; background: radial-gradient(circle, rgba(var(--primary-rgb), 0.15) 0%, transparent 70%); right: -100px; top: -100px; pointer-events: none; }
+
+    .header-content { max-width: 1600px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 30px; flex-wrap: wrap; }
+    .header-title h1 { margin: 0; font-family: 'Outfit', sans-serif; font-size: 32px; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, var(--text-main) 30%, var(--primary) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     .header-title p { margin: 8px 0 0; color: var(--text-muted); font-size: 14px; }
-    .header-actions { display: flex; align-items: center; gap: 20px; }
+    .header-actions { display: flex; align-items: center; gap: 15px; }
 
-    .theme-toggle-btn { background: var(--bg-input); border: var(--card-border); color: var(--text-main); padding: 10px 15px; border-radius: 9999px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; box-shadow: var(--shadow); }
-    .theme-toggle-btn:hover { border-color: var(--primary); }
+    .btn { background: var(--bg-card); border: var(--card-border); color: var(--text-main); padding: 10px 20px; border-radius: 9999px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; box-shadow: var(--shadow); text-decoration: none; }
+    .btn:hover { border-color: var(--primary); transform: translateY(-1px); }
+    .btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
+    .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
 
-    main { max-width: 1400px; margin: 30px auto; padding: 0 20px; }
+    main { max-width: 1600px; margin: 30px auto; padding: 0 30px; }
 
-    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 40px; }
-    .kpi-card { background: var(--bg-card); border-radius: 16px; padding: 22px; border: var(--card-border); box-shadow: var(--shadow); position: relative; overflow: hidden; }
-    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 15px 30px -10px rgba(0,0,0,0.3); }
-    .kpi-card .kpi-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .kpi-card .kpi-value { font-size: 36px; font-weight: 800; margin-top: 10px; font-family: 'Outfit', sans-serif; }
-    
-    .status-badge { display: inline-block; padding: 4px 12px; border-radius: 99px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 45px; }
+    .kpi-card { background: var(--bg-card); backdrop-filter: var(--glass-blur); border-radius: 20px; padding: 25px; border: var(--card-border); box-shadow: var(--shadow); cursor: pointer; position: relative; overflow: hidden; }
+    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 15px 30px -10px rgba(0,0,0,0.3); border-color: var(--primary); }
+    .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--primary); opacity: 0; transition: opacity 0.2s; }
+    .kpi-card:hover::before { opacity: 1; }
+    .kpi-card .kpi-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+    .kpi-card .kpi-value { font-size: 32px; font-weight: 800; margin-top: 10px; font-family: 'Outfit', sans-serif; }
+
+    .status-badge { display: inline-block; padding: 4px 12px; border-radius: 99px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; text-align: center; }
     .status-badge.pass { background-color: var(--success-bg); color: var(--success); }
     .status-badge.fail { background-color: var(--danger-bg); color: var(--danger); }
     .status-badge.warn { background-color: var(--warning-bg); color: var(--warning); }
+    .status-badge.pending { background-color: rgba(255,255,255,0.06); color: var(--text-muted); }
 
-    .chart-container { display: flex; align-items: center; gap: 15px; }
-    .radial-chart { position: relative; width: 64px; height: 64px; }
-    .radial-chart svg { transform: rotate(-90deg); width: 64px; height: 64px; }
-    .radial-chart circle { fill: none; stroke-width: 6; }
-    .radial-chart circle.bg { stroke: var(--bg-input); }
-    .radial-chart circle.fg { stroke: var(--success); stroke-linecap: round; transition: stroke-dashoffset 0.5s ease-in-out; }
-    .radial-chart .percentage { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 700; }
+    .visualizations-row { display: grid; grid-template-columns: 1fr 2fr; gap: 25px; margin-bottom: 45px; }
+    @media (max-width: 1024px) {
+      .visualizations-row { grid-template-columns: 1fr; }
+    }
+    .chart-panel { background: var(--bg-card); backdrop-filter: var(--glass-blur); border-radius: 20px; border: var(--card-border); box-shadow: var(--shadow); padding: 25px; display: flex; flex-direction: column; }
+    .chart-panel h3 { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 20px; color: var(--text-main); border-left: 4px solid var(--primary); padding-left: 10px; }
+    .chart-wrapper { position: relative; flex: 1; min-height: 250px; display: flex; align-items: center; justify-content: center; }
 
-    h2 { font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; margin: 40px 0 15px; display: flex; align-items: center; gap: 10px; }
-    
-    .panel { background: var(--bg-card); border-radius: 16px; border: var(--card-border); box-shadow: var(--shadow); overflow: hidden; padding: 15px; }
-    
+    .radial-chart-fallback { position: relative; width: 140px; height: 140px; }
+    .radial-chart-fallback svg { transform: rotate(-90deg); width: 140px; height: 140px; }
+    .radial-chart-fallback circle { fill: none; stroke-width: 10; }
+    .radial-chart-fallback circle.bg { stroke: var(--border); }
+    .radial-chart-fallback circle.fg { stroke: var(--success); stroke-linecap: round; transition: stroke-dashoffset 0.8s ease-in-out; }
+    .radial-chart-fallback .percentage { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: 'Outfit', sans-serif; font-size: 28px; font-weight: 800; }
+
+    h2 { font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 700; margin: 40px 0 20px; display: flex; align-items: center; gap: 10px; }
+    h2 svg { fill: var(--primary); width: 24px; height: 24px; }
+
+    .panel { background: var(--bg-card); backdrop-filter: var(--glass-blur); border-radius: 20px; border: var(--card-border); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 40px; }
+
+    .table-container { width: 100%; overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
-    th { background: var(--bg-input); color: var(--text-main); font-weight: 600; padding: 12px 16px; }
-    td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-main); vertical-align: top; }
+    th { background: rgba(0, 0, 0, 0.2); color: var(--text-main); font-weight: 600; padding: 14px 18px; border-bottom: 1px solid var(--border); font-family: 'Outfit', sans-serif; }
+    body.light-mode th { background: rgba(0, 0, 0, 0.03); }
+    td { padding: 14px 18px; border-bottom: 1px solid var(--border); color: var(--text-main); vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background-color: rgba(255, 255, 255, 0.02); }
-    body.light-mode tr:hover td { background-color: rgba(0, 0, 0, 0.01); }
+    tr:hover td { background-color: rgba(255, 255, 255, 0.015); }
+    body.light-mode tr:hover td { background-color: rgba(0, 0, 0, 0.005); }
 
-    .search-filter-bar { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 25px; flex-wrap: wrap; }
-    .search-box { position: relative; flex: 1; min-width: 280px; }
-    .search-box input { width: 100%; background: var(--bg-card); border: var(--card-border); color: var(--text-main); padding: 12px 20px 12px 45px; border-radius: 99px; font-size: 14px; box-shadow: var(--shadow); outline: none; }
-    .search-box input:focus { border-color: var(--primary); }
-    .search-box svg { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; fill: var(--text-muted); }
+    .clickable-row { cursor: pointer; }
+    .clickable-row:hover { background-color: rgba(var(--primary-rgb), 0.05) !important; }
 
-    .filter-group { display: flex; gap: 8px; flex-wrap: wrap; }
-    .filter-btn { background: var(--bg-card); border: var(--card-border); color: var(--text-muted); padding: 8px 18px; border-radius: 99px; cursor: pointer; font-size: 13px; font-weight: 600; box-shadow: var(--shadow); }
-    .filter-btn:hover { border-color: var(--primary); color: var(--text-main); }
-    .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .search-filter-bar { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }
+    .search-box { position: relative; flex: 1; min-width: 300px; }
+    .search-box input { width: 100%; background: var(--bg-card); border: var(--card-border); color: var(--text-main); padding: 12px 20px 12px 45px; border-radius: 99px; font-size: 14px; box-shadow: var(--shadow); outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
+    .search-box input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.2); }
+    .search-box svg { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; fill: var(--text-muted); }
 
-    .player-card { background: var(--bg-card); border-radius: 16px; border: var(--card-border); box-shadow: var(--shadow); margin-bottom: 15px; overflow: hidden; }
-    .player-header { padding: 20px 24px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .filter-controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+    .filter-group { display: flex; gap: 6px; background: var(--bg-card); border: var(--card-border); padding: 4px; border-radius: 99px; box-shadow: var(--shadow); }
+    .filter-btn { background: transparent; border: none; color: var(--text-muted); padding: 8px 16px; border-radius: 99px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .filter-btn:hover { color: var(--text-main); }
+    .filter-btn.active { background: var(--primary); color: white; }
+
+    .select-dropdown { background: var(--bg-card); border: var(--card-border); color: var(--text-main); padding: 10px 20px; border-radius: 99px; outline: none; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: var(--shadow); }
+    .select-dropdown:focus { border-color: var(--primary); }
+
+    .player-card { background: var(--bg-card); border-radius: 20px; border: var(--card-border); box-shadow: var(--shadow); margin-bottom: 20px; overflow: hidden; position: relative; }
+    .player-card.pulse-glow { animation: pulseGlow 1.5s ease-in-out infinite alternate; border-color: var(--primary); }
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 10px rgba(var(--primary-rgb), 0.1), var(--shadow); }
+      100% { box-shadow: 0 0 25px rgba(var(--primary-rgb), 0.4), var(--shadow); }
+    }
+
+    .player-header { padding: 22px 28px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
     .player-header:hover { background-color: rgba(255,255,255,0.01); }
     body.light-mode .player-header:hover { background-color: rgba(0,0,0,0.01); }
-    
-    .player-info-left { display: flex; align-items: center; gap: 15px; }
-    .player-info-left h3 { margin: 0; font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; }
-    .player-meta-info { font-size: 12px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
-    .player-meta-info span { display: inline-flex; align-items: center; gap: 4px; }
-    
-    .player-header-right { display: flex; align-items: center; gap: 15px; }
-    .arrow-icon { width: 20px; height: 20px; fill: var(--text-muted); transition: transform 0.3s; }
-    
-    .player-body { max-height: 0; overflow: hidden; padding: 0 24px; transition: padding 0.3s; }
-    .player-body.open { max-height: none; overflow: visible; padding: 24px; border-top: 1px solid var(--border); }
-    
-    .grid-2col { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-bottom: 25px; }
 
-    .defects-summary-box { background: var(--danger-bg); border: 1px solid var(--danger); border-radius: 12px; padding: 15px; margin-bottom: 25px; color: var(--text-main); }
-    .defects-summary-box h4 { margin: 0 0 10px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .player-info-left { display: flex; align-items: center; gap: 15px; }
+    .player-info-left h3 { margin: 0; font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; }
+    .player-meta-info { font-size: 12px; color: var(--text-muted); margin-top: 6px; display: flex; gap: 16px; flex-wrap: wrap; }
+    .player-meta-info span { display: inline-flex; align-items: center; gap: 6px; }
+
+    .player-header-right { display: flex; align-items: center; gap: 15px; }
+    .arrow-icon { width: 22px; height: 22px; fill: var(--text-muted); transition: transform 0.3s ease-out; }
+
+    /* Smooth height accordion grid trick */
+    .accordion-content { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+    .accordion-content.open { grid-template-rows: 1fr; }
+    .accordion-inner { overflow: hidden; }
+    .player-body-wrapper { padding: 0 28px 28px; border-top: 1px solid var(--border); margin-top: 0; }
+
+    .grid-2col { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 25px; margin-bottom: 30px; }
+    @media (max-width: 768px) {
+      .grid-2col { grid-template-columns: 1fr; }
+    }
+
+    .defects-summary-box { background: var(--danger-bg); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 14px; padding: 18px; margin-bottom: 25px; color: var(--text-main); }
+    .defects-summary-box h4 { margin: 0 0 10px; font-weight: 700; font-family: 'Outfit', sans-serif; display: flex; align-items: center; gap: 8px; }
+    .defects-summary-box ul { margin: 0; padding-left: 20px; font-size: 13px; }
+
+    /* Nested Tabs Style */
+    .sub-tabs-container { border-bottom: 1px solid var(--border); margin-bottom: 20px; display: flex; gap: 20px; position: relative; }
+    .sub-tab-btn { background: transparent; border: none; color: var(--text-muted); padding: 12px 4px; cursor: pointer; font-size: 13px; font-weight: 600; position: relative; }
+    .sub-tab-btn:hover { color: var(--text-main); }
+    .sub-tab-btn.active { color: var(--primary); }
+    .tab-active-bar { position: absolute; bottom: -1px; height: 2px; background: var(--primary); transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+
+    .sub-tab-content { display: none; }
+    .sub-tab-content.active { display: block; }
 
     .nowrap { white-space: nowrap; }
     a { color: var(--primary); text-decoration: none; font-weight: 500; }
     a:hover { text-decoration: underline; color: var(--primary-hover); }
+
+    mark.highlight { background: rgba(var(--primary-rgb), 0.3); color: inherit; padding: 0 2px; border-radius: 4px; }
+
+    .scroll-top-btn { position: fixed; bottom: 30px; right: 30px; width: 45px; height: 45px; border-radius: 50%; background: var(--primary); color: white; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3); opacity: 0; transform: translateY(10px); transition: opacity 0.3s, transform 0.3s; z-index: 100; }
+    .scroll-top-btn.visible { opacity: 1; transform: translateY(0); }
+    .scroll-top-btn:hover { background: var(--primary-hover); }
+    .scroll-top-btn svg { width: 20px; height: 20px; fill: white; }
+
+    .pagination-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+    .mini-btn { background: var(--bg-input); border: var(--card-border); color: var(--text-main); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; }
+    .mini-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Collapsible Group Styles */
+    .group-card { background: var(--bg-card); border-radius: 20px; border: var(--card-border); box-shadow: var(--shadow); margin-bottom: 20px; overflow: hidden; }
+    .group-header { padding: 18px 24px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.15); transition: background-color 0.2s; }
+    body.light-mode .group-header { background: rgba(0, 0, 0, 0.02); }
+    .group-header:hover { background-color: rgba(255, 255, 255, 0.02); }
+    body.light-mode .group-header:hover { background-color: rgba(0, 0, 0, 0.04); }
+    .group-header-left { display: flex; align-items: center; gap: 15px; }
+    .item-count-badge { background: var(--bg-input); border: var(--card-border); color: var(--text-muted); font-size: 11px; padding: 3px 10px; border-radius: 99px; font-weight: 700; }
+    .group-arrow-icon { width: 20px; height: 20px; fill: var(--text-muted); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .group-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .group-body.collapsed { grid-template-rows: 0fr; }
+    .group-body-inner { overflow: hidden; }
   </style>
 </head>
-<body>
+<body class="dark-mode">
   <header>
     <div class="header-content">
       <div class="header-title">
         <h1>${escapeHtml(t.title)}</h1>
-        <p>${escapeHtml(t.generated)}: ${escapeHtml(new Date().toLocaleString())} | ${escapeHtml(t.runStatus)}: ${escapeHtml(summary.runStatus)}${summary.interruptedReason ? ` (${escapeHtml(summary.interruptedReason)})` : ""} | ${escapeHtml(t.source)}: <a href="${escapeHtml(report.playersUrl || "")}">${escapeHtml(report.playersUrl || "")}</a></p>
+        <p>${escapeHtml(t.generated)}: ${escapeHtml(new Date().toLocaleString())} | ${escapeHtml(t.runStatus)}: <span class="status-badge ${summary.status}">${escapeHtml(isKo ? formatStatus(summary.status) : summary.status)}</span>${summary.interruptedReason ? ` (${escapeHtml(summary.interruptedReason)})` : ""} | ${escapeHtml(t.source)}: <a href="${escapeHtml(report.playersUrl || "")}">${escapeHtml(report.playersUrl || "")}</a></p>
       </div>
       <div class="header-actions">
-        <div class="chart-container">
-          <div class="radial-chart">
-            <svg>
-              <circle class="bg" cx="32" cy="32" r="28" />
-              <circle class="fg" cx="32" cy="32" r="28" stroke-dasharray="175.9" stroke-dashoffset="${175.9 - (175.9 * passPercent / 100)}" />
-            </svg>
-            <div class="percentage">${passPercent}%</div>
-          </div>
-          <div>
-            <span class="status-badge ${summary.status}">${escapeHtml(isKo ? formatStatus(summary.status) : summary.status)}</span>
-          </div>
-        </div>
-        <button class="theme-toggle-btn" id="theme-toggle">
+        <button class="btn btn-primary" id="theme-toggle">
           <svg style="width:16px;height:16px;" viewBox="0 0 24 24"><path fill="currentColor" d="M12,18C11.11,18 10.26,17.8 9.5,17.45C11.56,16.5 13,14.42 13,12C13,9.58 11.56,7.5 9.5,6.55C10.26,6.2 11.11,6 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18M20,8.69V4H15.31L12,0.69L8.69,4H4V8.69L0.69,12L4,15.31V20H8.69L12,23.31L15.31,20H20V15.31L23.31,12L20,8.69Z"/></svg>
-          Theme Toggle
+          Theme
         </button>
       </div>
     </div>
   </header>
 
   <main>
+    <!-- KPI Dashboard Grid -->
     <div class="dashboard-grid">
-      <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.category)}</div><div class="kpi-value">${summary.checkedStandingsCategories}</div></div>
-      <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.playersChecked)}</div><div class="kpi-value">${summary.completedPlayers}/${summary.totalPlayers}</div></div>
-      <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.eventsCrawled)}</div><div class="kpi-value">${summary.crawledEvents}</div></div>
-      <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.tabChecks)}</div><div class="kpi-value">${summary.tabChecks}</div></div>
-      <div class="kpi-card"><div class="kpi-label">${escapeHtml(t.resultPages)}</div><div class="kpi-value">${summary.crawledResultPages}</div></div>
-      <div class="kpi-card" style="border-color: ${defects.length ? "var(--danger)" : "rgba(255,255,255,0.05)"};"><div class="kpi-label">${escapeHtml(t.defectCandidates)}</div><div class="kpi-value" style="color: ${defects.length ? "var(--danger)" : "inherit"};">${summary.defects}</div></div>
-      <div class="kpi-card" style="border-color: ${reviewNotes.length ? "var(--warning)" : "rgba(255,255,255,0.05)"};"><div class="kpi-label">${escapeHtml(t.reviewNotesList)}</div><div class="kpi-value" style="color: ${reviewNotes.length ? "var(--warning)" : "inherit"};">${summary.reviewNotes}</div></div>
+      <div class="kpi-card" onclick="filterByStatus('all')">
+        <div class="kpi-label">${escapeHtml(t.category)}</div>
+        <div class="kpi-value">${summary.checkedStandingsCategories}</div>
+      </div>
+      <div class="kpi-card" onclick="filterByStatus('all')">
+        <div class="kpi-label">${escapeHtml(t.playersChecked)}</div>
+        <div class="kpi-value">${summary.completedPlayers}/${summary.totalPlayers}</div>
+      </div>
+      <div class="kpi-card" onclick="filterByStatus('pass')">
+        <div class="kpi-label">${isKo ? "통과한 선수" : "Passed Players"}</div>
+        <div class="kpi-value" style="color: var(--success);">${summary.passedPlayers}</div>
+      </div>
+      <div class="kpi-card" onclick="filterByStatus('warn')">
+        <div class="kpi-label">${isKo ? "주의 선수" : "Warned Players"}</div>
+        <div class="kpi-value" style="color: var(--warning);">${summary.warnedPlayers || 0}</div>
+      </div>
+      <div class="kpi-card" onclick="filterByStatus('fail')">
+        <div class="kpi-label">${escapeHtml(t.defectCandidates)}</div>
+        <div class="kpi-value" style="color: ${defects.length ? "var(--danger)" : "inherit"};">${summary.defects}</div>
+      </div>
+      <div class="kpi-card" onclick="filterByStatus('warn')">
+        <div class="kpi-label">${isKo ? "경고/주의 항목" : "Warnings / Notes"}</div>
+        <div class="kpi-value" style="color: ${reviewNotes.length ? "var(--warning)" : "inherit"};">${summary.reviewNotes}</div>
+      </div>
     </div>
 
-    <h2>${escapeHtml(t.validationRules)}</h2>
-    <div class="panel" style="margin-bottom:40px;">
-      <table>
-        <thead>
-          <tr><th class="nowrap" style="width:200px;">${escapeHtml(t.ruleItem)}</th><th>${escapeHtml(t.ruleRule)}</th></tr>
-        </thead>
-        <tbody>
-          ${t.rulesData.map(([item, rule]) => `<tr><td class="nowrap"><strong>${escapeHtml(item)}</strong></td><td>${escapeHtml(rule)}</td></tr>`).join("")}
-        </tbody>
-      </table>
+    <!-- Visualizations Row -->
+    <div class="visualizations-row">
+      <div class="chart-panel">
+        <h3>${isKo ? "데이터 무결성 통계" : "Data Integrity Status"}</h3>
+        <div class="chart-wrapper">
+          <canvas id="statusChart" style="display:none;"></canvas>
+          <div class="radial-chart-fallback" id="radialFallback">
+            <svg>
+              <circle class="bg" cx="70" cy="70" r="60" />
+              <circle class="fg" cx="70" cy="70" r="60" stroke-dasharray="377" stroke-dashoffset="${377 - (377 * passPercent / 100)}" />
+            </svg>
+            <div class="percentage">${passPercent}%</div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-panel">
+        <h3>${isKo ? "검출된 결함 카테고리 분포" : "Defect Categories Breakdown"}</h3>
+        <div class="chart-wrapper">
+          <canvas id="defectsChart" style="display:none;"></canvas>
+          <div id="defectsFallback" style="text-align:center;color:var(--text-muted);font-size:14px;padding:20px;">
+            ${defects.length ? `<span style="font-size:48px;">⚠️</span><br>${defects.length}개의 정합성 오류 항목 검출됨` : `🎉 데이터 무결성 검증 100% 완료`}
+          </div>
+        </div>
+      </div>
     </div>
 
-    <h2>${escapeHtml(t.coverage)}</h2>
-    <div class="panel" style="margin-bottom:40px;">
-      ${standingsSourceSummary.length ? `<table>
-        <thead>
-          <tr><th style="width:280px;">Category</th><th>Players</th></tr>
-        </thead>
-        <tbody>
-          ${standingsSourceSummary.map((item) => `<tr>
-            <td><strong>${escapeHtml(item.category)}</strong></td>
-            <td>
-              <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                ${item.entries.map((entry) => `<span class="status-badge" style="background:var(--bg-input);padding:5px 10px;"><span style="color:var(--primary);font-weight:700;margin-right:4px;">#${escapeHtml(entry.rank ?? "-")}</span> <a href="${escapeHtml(entry.url)}">${escapeHtml(entry.player)}</a></span>`).join("")}
-              </div>
-            </td>
-          </tr>`).join("")}
-        </tbody>
-      </table>` : `<p>${escapeHtml(t.noDefects)}</p>`}
+    <!-- Crawler Coverage & Guidelines -->
+    <h2>
+      <svg viewBox="0 0 24 24" style="fill: var(--primary); width: 24px; height: 24px;"><path d="M12,2C6.48,2 2,6.48 2,12C2,17.52 6.48,22 12,22C17.52,22 22,17.52 22,12C22,6.48 17.52,2 12,2M13,16H11V18H13V16M13,6H11V14H13V6Z"/></svg>
+      ${isKo ? "크롤러 수집 범위 및 검증 기준" : "Crawler Coverage & Validation Guidelines"}
+    </h2>
+
+    <!-- Standings Coverage Collapsible Card -->
+    <div class="group-card" style="margin-bottom: 20px;">
+      <div class="group-header" onclick="toggleGroupCollapse('metadata', 'coverage')">
+        <div class="group-header-left">
+          <span class="status-badge pass" style="background-color: rgba(var(--primary-rgb), 0.15); color: var(--primary);">${escapeHtml(t.coverage)}</span>
+          <span class="item-count-badge">${summary.checkedStandingsCategories} ${isKo ? '개 카테고리' : 'Categories'}</span>
+        </div>
+        <svg class="group-arrow-icon" id="metadata-group-arrow-coverage" viewBox="0 0 24 24" style="transform: rotate(0deg);"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg>
+      </div>
+      <div class="group-body collapsed" id="metadata-group-body-coverage">
+        <div class="group-body-inner">
+          <div class="table-container" style="border-top: 1px solid var(--border);">
+            ${standingsSourceSummary.length ? `<table>
+              <thead>
+                <tr><th style="width:280px;">Category</th><th>Players</th></tr>
+              </thead>
+              <tbody>
+                ${standingsSourceSummary.map((item) => `<tr>
+                  <td><strong>${escapeHtml(item.category)}</strong></td>
+                  <td>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                      ${item.entries.map((entry) => `<span class="status-badge" style="background:var(--bg-input);padding:5px 10px;"><span style="color:var(--primary);font-weight:700;margin-right:4px;">#${escapeHtml(entry.rank ?? "-")}</span> <a href="${escapeHtml(entry.url)}" target="_blank" onclick="event.stopPropagation();">${escapeHtml(entry.player)}</a></span>`).join("")}
+                    </div>
+                  </td>
+                </tr>`).join("")}
+              </tbody>
+            </table>` : `<div style="padding: 20px; text-align: center; color: var(--text-muted);">${escapeHtml(t.noDefects)}</div>`}
+          </div>
+        </div>
+      </div>
     </div>
 
-    <h2>${escapeHtml(t.defectList)}</h2>
-    <div class="panel" style="margin-bottom:40px;">
-      ${defects.length ? `<table>
-        <thead>
-          <tr><th>Type</th><th>Player</th><th>Item</th><th>Expected</th><th>Actual</th><th>Detail</th></tr>
-        </thead>
-        <tbody>
-          ${defects.map((row) => `<tr style="border-left: 3px solid var(--danger);">
-            <td class="nowrap"><span class="status-badge fail">${escapeHtml(isKo ? formatKoreanDefectType(row.type) : row.type)}</span></td>
-            <td class="nowrap"><strong>${escapeHtml(row.player)}</strong></td>
-            <td>${escapeHtml(isKo ? formatLabel(row.item) : row.item)}</td>
-            <td><code>${escapeHtml(row.expected)}</code></td>
-            <td><code>${escapeHtml(row.actual)}</code></td>
-            <td>
-              <div style="max-width:400px;font-size:11px;color:var(--text-muted);word-break:break-all;">
-                ${escapeHtml(row.detail || "")}
-              </div>
-            </td>
-          </tr>`).join("")}
-        </tbody>
-      </table>` : `<p>${escapeHtml(t.noDefects)}</p>`}
+    <!-- Validation Rules Collapsible Card -->
+    <div class="group-card" style="margin-bottom: 40px;">
+      <div class="group-header" onclick="toggleGroupCollapse('metadata', 'rules')">
+        <div class="group-header-left">
+          <span class="status-badge pass" style="background-color: rgba(var(--primary-rgb), 0.15); color: var(--primary);">${escapeHtml(t.validationRules)}</span>
+          <span class="item-count-badge">${t.rulesData.length} ${isKo ? '개 규칙' : 'Rules'}</span>
+        </div>
+        <svg class="group-arrow-icon" id="metadata-group-arrow-rules" viewBox="0 0 24 24" style="transform: rotate(180deg);"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg>
+      </div>
+      <div class="group-body" id="metadata-group-body-rules">
+        <div class="group-body-inner">
+          <div class="table-container" style="border-top: 1px solid var(--border);">
+            <table>
+              <thead>
+                <tr><th class="nowrap" style="width:200px;">${escapeHtml(t.ruleItem)}</th><th>${escapeHtml(t.ruleRule)}</th></tr>
+              </thead>
+              <tbody>
+                ${t.rulesData.map(([item, rule]) => `<tr><td class="nowrap"><strong>${escapeHtml(item)}</strong></td><td>${escapeHtml(rule)}</td></tr>`).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <h2>${escapeHtml(t.reviewNotesList)}</h2>
-    <div class="panel" style="margin-bottom:40px;">
-      ${reviewNotes.length ? `<table>
-        <thead>
-          <tr><th>Type</th><th>Player</th><th>Item</th><th>Detail</th></tr>
-        </thead>
-        <tbody>
-          ${reviewNotes.map((row) => `<tr style="border-left: 3px solid var(--warning);">
-            <td class="nowrap"><span class="status-badge warn">${escapeHtml(isKo ? formatKoreanDefectType(row.type) : row.type)}</span></td>
-            <td class="nowrap"><strong>${escapeHtml(row.player)}</strong></td>
-            <td>${row.url ? `<a href="${escapeHtml(row.url)}" target="_blank">${escapeHtml(isKo ? formatLabel(row.item) : row.item)}</a>` : escapeHtml(isKo ? formatLabel(row.item) : row.item)}</td>
-            <td>
-              <div style="max-width:700px;font-size:12px;color:var(--text-muted);word-break:break-word;">
-                ${escapeHtml(localizeWarning(row.detail || "", isKo))}
-              </div>
-            </td>
-          </tr>`).join("")}
-        </tbody>
-      </table>` : `<p>${escapeHtml(t.noReviewNotes)}</p>`}
-    </div>
+    <!-- Defect Inspector List -->
+    <h2>
+      <svg viewBox="0 0 24 24"><path d="M12,2L1,21H23M12,6L19.8,20H4.2M11,10V14H13V10M11,16V18H13V16"/></svg>
+      ${escapeHtml(t.defectList)}
+    </h2>
+    <div id="defects-grouped-container"></div>
 
-    <div class="search-filter-bar">
-      <h2>${escapeHtml(t.playersDetail)}</h2>
+    <!-- Warnings / Skipped Inspector List -->
+    <h2>
+      <svg viewBox="0 0 24 24"><path d="M11,15H13V17H11V15M11,7H13V13H11V7M12,2C6.47,2 2,6.5 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z"/></svg>
+      ${escapeHtml(t.reviewNotesList)}
+    </h2>
+    <div id="warnings-grouped-container"></div>
+
+    <!-- Players Detail Section -->
+    <div class="search-filter-bar" id="player-directory">
+      <h2>
+        <svg viewBox="0 0 24 24"><path d="M16,13C15.71,13 15.38,13 15.03,13.05C16.19,13.89 17,15 17,16.5V19H23V16.5C23,14.28 19.33,13 16,13M8,13C4.67,13 1,14.28 1,16.5V19H15V16.5C15,14.28 11.33,13 8,13M8,11A3,3 0 0,0 11,8A3,3 0 0,0 8,5A3,3 0 0,0 5,8A3,3 0 0,0 8,11M16,11A3,3 0 0,0 19,8A3,3 0 0,0 16,5A3,3 0 0,0 13,8A3,3 0 0,0 16,11Z"/></svg>
+        ${escapeHtml(t.playersDetail)}
+      </h2>
       <div class="search-box">
         <svg viewBox="0 0 24 24"><path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/></svg>
         <input type="text" id="search-input" placeholder="${escapeHtml(t.searchPlaceholder)}">
       </div>
-      <div class="filter-group">
-        <button class="filter-btn active" data-filter="all">${escapeHtml(t.filterAll)} (${summary.checkedPlayers})</button>
-        <button class="filter-btn" data-filter="pass">${escapeHtml(t.filterPass)} (${summary.passedPlayers})</button>
-        <button class="filter-btn" data-filter="warn">${escapeHtml(t.filterWarn)} (${summary.warnedPlayers || 0})</button>
-        <button class="filter-btn" data-filter="fail">${escapeHtml(t.filterFail)} (${summary.failedPlayers})</button>
+      <div class="filter-controls">
+        <div class="filter-group">
+          <button class="filter-btn active" data-filter="all" onclick="filterByStatus('all')">${escapeHtml(t.filterAll)}</button>
+          <button class="filter-btn" data-filter="pass" onclick="filterByStatus('pass')">${escapeHtml(t.filterPass)}</button>
+          <button class="filter-btn" data-filter="warn" onclick="filterByStatus('warn')">${escapeHtml(t.filterWarn)}</button>
+          <button class="filter-btn" data-filter="fail" onclick="filterByStatus('fail')">${escapeHtml(t.filterFail)}</button>
+        </div>
+        <select class="select-dropdown" id="category-filter" onchange="filterByCategory(this.value)">
+          <option value="all">${isKo ? "모든 카테고리" : "All Categories"}</option>
+          <!-- Categories filled dynamically -->
+        </select>
+        <select class="select-dropdown" id="sort-select" onchange="sortPlayers(this.value)">
+          <option value="name-asc">${isKo ? "이름순 (A-Z)" : "Name (A-Z)"}</option>
+          <option value="name-desc">${isKo ? "이름 역순 (Z-A)" : "Name (Z-A)"}</option>
+          <option value="cashes-desc">${isKo ? "이벤트 다수참가순" : "Most Cashed Events"}</option>
+          <option value="earnings-desc">${isKo ? "총상금 높은순" : "Highest Earnings"}</option>
+          <option value="status-desc">${isKo ? "정합성 상태순" : "Verify Status"}</option>
+        </select>
       </div>
     </div>
 
-    <div id="players-list">
-      ${(report.players || []).map((player) => {
-        const hasWarning = player.warnings && player.warnings.length > 0;
-        return `<div class="player-card" data-status="${player.status}" data-name="${escapeHtml(player.name)}">
-          <div class="player-header">
-            <div class="player-info-left">
-              <h3>${escapeHtml(player.name)}</h3>
-              <div class="player-meta-info">
-                <span>🔗 <a href="${escapeHtml(player.url)}" onclick="event.stopPropagation();">${escapeHtml(player.url)}</a></span>
-                <span>🏆 All Tab Crawled: <strong>${player.events?.length ?? 0}</strong></span>
-                <span>📊 Profile Cashes: <strong>${player.summary?.cashes ?? "-"}</strong></span>
-                <span>🔄 Load More: <strong>${player.expansion?.loadMoreClicks ?? 0}</strong></span>
-              </div>
-            </div>
-            <div class="player-header-right">
-              <span class="status-badge ${player.status}">${escapeHtml(isKo ? formatStatus(player.status) : player.status)}</span>
-              <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg>
-            </div>
-          </div>
-          <div class="player-body">
-            ${player.error ? `<div class="defects-summary-box"><h4>⚠️ Crawl Error</h4><p>${escapeHtml(player.error)}</p></div>` : ""}
-            ${hasWarning ? `<div class="defects-summary-box" style="background:var(--warning-bg);border-color:var(--warning);color:var(--text-main);">
-              <h4>⚠️ Warnings</h4>
-              <ul style="margin:0;padding-left:20px;">
-                ${player.warnings.map(w => `<li>${escapeHtml(localizeWarning(w, isKo))}</li>`).join("")}
-              </ul>
-            </div>` : ""}
-
-            <div class="grid-2col">
-              <div>
-                <h4 style="margin:0 0 10px;">Summary Metrics Check</h4>
-                <table style="width:100%;">
-                  <thead>
-                    <tr><th>Stat</th><th>${escapeHtml(t.profileStat)}</th><th>Calculated</th><th>Status</th></tr>
-                  </thead>
-                  <tbody>
-                    ${(player.comparisons || []).map((item) => `<tr>
-                      <td><strong>${escapeHtml(isKo ? formatLabel(item.label) : item.label)}</strong></td>
-                      <td>${escapeHtml(formatValue(item.label, item.top))}</td>
-                      <td>${escapeHtml(formatValue(item.label, item.calculated))}</td>
-                      <td><span class="status-badge ${item.status}">${escapeHtml(isKo ? formatStatus(item.status) : item.status)}</span></td>
-                    </tr>`).join("")}
-                  </tbody>
-                </table>
-              </div>
-
-              <div>
-                <h4 style="margin:0 0 10px;">Profile Tabs Integrity</h4>
-                <table style="width:100%;">
-                  <thead>
-                    <tr><th>${escapeHtml(t.tabHeader)}</th><th>Label</th><th>Profile Stat</th><th>Tab Calc</th><th>Status</th></tr>
-                  </thead>
-                  <tbody>
-                    ${(player.tabChecks || []).map((item) => `<tr>
-                      <td><strong>${escapeHtml(isKo ? formatLabel(item.label) : item.label)}</strong></td>
-                      <td><code>${escapeHtml(item.selectedTab || "-")}</code></td>
-                      <td>${escapeHtml(formatValue(item.label, item.expected))}</td>
-                      <td>${escapeHtml(formatValue(item.label, item.actual))}</td>
-                      <td><span class="status-badge ${item.status}">${escapeHtml(isKo ? formatStatus(item.status) : item.status)}</span></td>
-                    </tr>`).join("")}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <h4 style="margin:20px 0 10px;">Cashed Events Results Matching</h4>
-            <div style="overflow-x:auto;">
-              <table style="width:100%;">
-                <thead>
-                  <tr>
-                    <th>${escapeHtml(t.seriesEvent)}</th>
-                    <th>${escapeHtml(t.dateText)}</th>
-                    <th>${escapeHtml(t.rankText)}</th>
-                    <th>${escapeHtml(t.earningsText)}</th>
-                    <th>${escapeHtml(t.resultUrlText)}</th>
-                    <th>${escapeHtml(t.resultCheckText)}</th>
-                    <th>${escapeHtml(t.finalFindingText)}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${(player.events || []).slice(0, 100).map((event) => {
-                    const resStatus = event.resultPage ? event.resultPage.status : "pending";
-                    return `<tr>
-                      <td><strong>${escapeHtml(event.eventName)}</strong></td>
-                      <td class="nowrap">${escapeHtml(event.date || "-")}</td>
-                      <td class="nowrap">${escapeHtml(event.rankText || event.rank || "-")}</td>
-                      <td class="nowrap">${escapeHtml(formatValue("Total Earnings", event.earnings))}</td>
-                      <td>
-                        ${event.resultPage?.url ? `<a href="${escapeHtml(event.resultPage.url)}" target="_blank">Link</a>` : event.resultUrl ? `<a href="${escapeHtml(event.resultUrl)}" target="_blank">Link</a>` : "-"}
-                      </td>
-                      <td>
-                        ${event.resultPage ? `<span class="status-badge ${event.resultPage.status}">${escapeHtml(isKo ? formatStatus(event.resultPage.status) : event.resultPage.status)}</span>` : `<span style="color:var(--text-muted);">-</span>`}
-                      </td>
-                      <td style="font-size:12px;color:var(--text-muted);max-width:300px;word-break:break-all;">
-                        ${escapeHtml(isKo ? formatKoreanResultFinding(event) : formatResultFinding(event))}
-                      </td>
-                    </tr>`;
-                  }).join("")}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>`;
-      }).join("")}
-    </div>
+    <!-- Dynamic Player List Container -->
+    <div id="players-list"></div>
   </main>
 
-  <script>
-    // 테마 토글 처리
-    const themeToggleBtn = document.getElementById('theme-toggle');
-    themeToggleBtn.addEventListener('click', () => {
-      document.body.classList.toggle('light-mode');
-      const isLight = document.body.classList.contains('light-mode');
-      localStorage.setItem('wsop-theme', isLight ? 'light' : 'dark');
-    });
+  <button class="scroll-top-btn" id="scroll-to-top" onclick="window.scrollTo({top:0, behavior:'smooth'})">
+    <svg viewBox="0 0 24 24"><path d="M7.41,18.41L6,17L12,11L18,17L16.59,18.41L12,13.83L7.41,18.41M7.41,12.41L6,11L12,5L18,11L16.59,12.41L12,7.83L7.41,12.41Z"/></svg>
+  </button>
 
-    // 로드 시 로컬스토리지 테마 복원
-    const savedTheme = localStorage.getItem('wsop-theme');
-    if (savedTheme === 'light') {
+  <script>
+    // Embedded JSON data with safe string escape
+    const reportData = ${reportJson};
+    const isKo = ${isKo};
+
+    // Labels configuration
+    const labels = {
+      profileStat: "${escapeHtml(t.profileStat)}",
+      calculatedValue: "${escapeHtml(t.calculatedValue)}",
+      statusText: "${escapeHtml(t.statusText)}",
+      tabHeader: "${escapeHtml(t.tabHeader)}",
+      selectedTabLabel: "${escapeHtml(t.selectedTabLabel)}",
+      visibleRows: "${escapeHtml(t.visibleRows)}",
+      seriesEvent: "${escapeHtml(t.seriesEvent)}",
+      dateText: "${escapeHtml(t.dateText)}",
+      rankText: "${escapeHtml(t.rankText)}",
+      earningsText: "${escapeHtml(t.earningsText)}",
+      resultUrlText: "${escapeHtml(t.resultUrlText)}",
+      resultCheckText: "${escapeHtml(t.resultCheckText)}",
+      finalFindingText: "${escapeHtml(t.finalFindingText)}",
+      noDefects: "${escapeHtml(t.noDefects)}",
+      noReviewNotes: "${escapeHtml(t.noReviewNotes)}",
+      searchEventsPlaceholder: "${escapeHtml(t.searchEventsPlaceholder)}"
+    };
+
+    const state = {
+      players: reportData.players || [],
+      searchQuery: '',
+      statusFilter: 'all',
+      categoryFilter: 'all',
+      sortBy: 'name-asc'
+    };
+
+    // Sub-tab active index caching
+    const activeSubTabs = {};
+    // Event lists page caching
+    const eventPages = {};
+    // Event lists search query caching
+    const eventSearchQuery = {};
+
+    // Chart.js instance caches
+    let statusChartInstance = null;
+    let defectsChartInstance = null;
+
+    // Theme toggle
+    const themeBtn = document.getElementById('theme-toggle');
+    themeBtn.addEventListener('click', () => {
+      document.body.classList.toggle('light-mode');
+      localStorage.setItem('wsop-theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
+      initCharts();
+    });
+    if (localStorage.getItem('wsop-theme') === 'light') {
       document.body.classList.add('light-mode');
     }
 
-    // 아코디언 접고 펼치기 로직
-    const playerHeaders = document.querySelectorAll('.player-header');
-    playerHeaders.forEach(header => {
-      header.addEventListener('click', () => {
-        const body = header.nextElementSibling;
-        const icon = header.querySelector('.arrow-icon');
-        body.classList.toggle('open');
-        if (body.classList.contains('open')) {
-          icon.style.transform = 'rotate(180deg)';
-        } else {
-          icon.style.transform = 'rotate(0deg)';
-        }
-      });
+    // Scroll to top button visibility
+    const scrollTopBtn = document.getElementById('scroll-to-top');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 300) scrollTopBtn.classList.add('visible');
+      else scrollTopBtn.classList.remove('visible');
     });
 
-    // 실시간 검색 및 필터 로직
-    const searchInput = document.getElementById('search-input');
-    const filterBtns = document.querySelectorAll('.filter-btn');
-    const playerCards = document.querySelectorAll('.player-card');
+    // Helper functions
+    function formatValue(label, val) {
+      if (val === null || val === undefined) return "-";
+      if (label.toLowerCase().includes("earnings") || label.toLowerCase().includes("상금")) {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
+      }
+      return val;
+    }
 
-    let currentFilter = 'all';
-    let searchQuery = '';
+    function formatStatus(status) {
+      if (!isKo) return status;
+      return { pass: "통과", fail: "실패", warn: "주의", pending: "대기" }[status] || status;
+    }
 
-    function filterPlayers() {
-      playerCards.forEach(card => {
-        const name = card.getAttribute('data-name').toLowerCase();
-        const status = card.getAttribute('data-status');
-        
-        const matchesSearch = name.includes(searchQuery);
-        const matchesFilter = currentFilter === 'all' || status === currentFilter;
-        
-        if (matchesSearch && matchesFilter) {
-          card.style.display = 'block';
-        } else {
-          card.style.display = 'none';
+    function formatKoreanDefectType(type) {
+      if (!isKo) return type;
+      return {
+        "Profile summary mismatch": "프로필 요약 불일치",
+        "Profile tab count mismatch": "프로필 탭 개수 불일치",
+        "Result page mismatch": "Result 페이지 불일치",
+        "Result search incomplete": "Result 탐색 미완료",
+        "Crawler warning": "크롤러 경고",
+        "Result skipped": "Result 검증 건너뜀",
+        "Crawler error": "크롤러 오류"
+      }[type] || type;
+    }
+
+    function localizeWarning(warning) {
+      if (!isKo) return warning;
+      return warning
+        .replace(/Total Earnings calculated from ALL tab/g, "ALL 탭에서 계산한 총상금")
+        .replace(/is different from profile summary/g, "이 프로필 요약값과 다릅니다")
+        .replace(/calculated/g, "계산값")
+        .replace(/profile summary/g, "프로필 요약")
+        .replace(/Crawl error:/g, "크롤링 오류:")
+        .replace(/No result pages check because disabledResultMode is/g, "Result 검증 비활성화 설정 상태:")
+        .replace(/Result buttons\\/links are disabled/g, "Result 버튼 또는 링크가 비활성화됨");
+    }
+
+    function formatLabel(label) {
+      if (!isKo) return label;
+      return {
+        "titles": "Title",
+        "bracelets": "Bracelets",
+        "rings": "Rings",
+        "finalTables": "Final Tables",
+        "cashes": "Cashes",
+        "totalEarnings": "Total Earnings",
+        "Title": "Title 탭",
+        "Bracelets": "Bracelets 탭",
+        "Rings": "Rings 탭",
+        "Final Tables": "Final Tables 탭"
+      }[label] || label;
+    }
+
+    function formatKoreanResultFinding(event) {
+      const result = event.resultPage;
+      if (!result) {
+        if (event.resultSkipped) return "건너뜀: " + event.resultSkipped;
+        if (event.resultUrl || event.hasResultControl) return "Result 확인 대기";
+        return "Result 버튼/링크 없음";
+      }
+      if (result.error) return result.error;
+      if (result.foundRow) {
+        return "일치 행 발견: No " + result.foundRow.no + ", " + result.foundRow.player + ", " + formatValue("Total Earnings", result.foundRow.earnings);
+      }
+      return "누락: " + (result.missing || []).join(", ");
+    }
+
+    function formatResultFinding(event) {
+      const result = event.resultPage;
+      if (!result) {
+        if (event.resultSkipped) return event.resultSkipped;
+        if (event.resultUrl || event.hasResultControl) return "Awaiting results";
+        return "No result control";
+      }
+      if (result.error) return result.error;
+      if (result.foundRow) {
+        return "Match found: No " + result.foundRow.no + ", " + result.foundRow.player + ", " + formatValue("Total Earnings", result.foundRow.earnings);
+      }
+      return "Missing: " + (result.missing || []).join(", ");
+    }
+
+    function escapeHtml(str) {
+      if (typeof str !== 'string') return str;
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function highlightText(text, search) {
+      if (!search.trim()) return escapeHtml(text);
+      const regex = new RegExp(\`(\${search.replace(/[-\\/\\\\^$*+?.()|[\\]{}]/g, '\\\\$&')})\`, 'gi');
+      return escapeHtml(text).replace(regex, '<mark class="highlight">$1</mark>');
+    }
+
+    // Dynamic sorting & filtering logic
+    function getFilteredAndSortedPlayers() {
+      return state.players
+        .filter(player => {
+          const matchesSearch = player.name.toLowerCase().includes(state.searchQuery.toLowerCase());
+          const matchesStatus = state.statusFilter === 'all' || player.status === state.statusFilter;
+
+          let matchesCategory = true;
+          if (state.categoryFilter !== 'all') {
+            matchesCategory = (player.standingsSources || []).some(src => src.category === state.categoryFilter);
+          }
+
+          return matchesSearch && matchesStatus && matchesCategory;
+        })
+        .sort((a, b) => {
+          if (state.sortBy === 'name-asc') return a.name.localeCompare(b.name);
+          if (state.sortBy === 'name-desc') return b.name.localeCompare(a.name);
+
+          if (state.sortBy === 'cashes-desc') {
+            const aCashes = a.events?.length || 0;
+            const bCashes = b.events?.length || 0;
+            return bCashes - aCashes;
+          }
+          if (state.sortBy === 'earnings-desc') {
+            const aEarnings = a.summary?.totalEarnings || 0;
+            const bEarnings = b.summary?.totalEarnings || 0;
+            return bEarnings - aEarnings;
+          }
+          if (state.sortBy === 'status-desc') {
+            const order = { fail: 3, warn: 2, pass: 1 };
+            const aOrder = order[a.status] || 0;
+            const bOrder = order[b.status] || 0;
+            return bOrder - aOrder;
+          }
+          return 0;
+        });
+    }
+
+    // Rendering functions
+    function populateStaticTables() {
+      // 1. Categories filter dropdown list
+      const catSelect = document.getElementById('category-filter');
+      const categories = [...new Set(state.players.flatMap(p => (p.standingsSources || []).map(src => src.category)))];
+      categories.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        catSelect.appendChild(opt);
+      });
+
+      // 2. Defects Grouped Accordion
+      const defectsContainer = document.getElementById('defects-grouped-container');
+      const defectsList = state.players.flatMap(p => (p.defects || []).map(d => ({ ...d, player: p.name })));
+
+      if (defectsList.length) {
+        // Group by type
+        const groupedDefects = {};
+        defectsList.forEach(row => {
+          const type = row.type || "Other";
+          if (!groupedDefects[type]) groupedDefects[type] = [];
+          groupedDefects[type].push(row);
+        });
+
+        let html = '';
+        Object.entries(groupedDefects).forEach(([type, rows]) => {
+          const typeKey = type.replace(/[^a-zA-Z0-9]/g, '-');
+          const localizedType = formatKoreanDefectType(type);
+
+          html += \`
+            <div class="group-card">
+              <div class="group-header" onclick="toggleGroupCollapse('defects', '\${typeKey}')">
+                <div class="group-header-left">
+                  <span class="status-badge fail">\${escapeHtml(localizedType)}</span>
+                  <span class="item-count-badge">\${rows.length} \${isKo ? '건' : 'items'}</span>
+                </div>
+                <svg class="group-arrow-icon" id="defects-group-arrow-\${typeKey}" viewBox="0 0 24 24" style="transform: rotate(0deg);"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg>
+              </div>
+              <div class="group-body collapsed" id="defects-group-body-\${typeKey}">
+                <div class="group-body-inner">
+                  <div class="table-container" style="border-top: 1px solid var(--border);">
+                    <table>
+                      <thead>
+                        <tr><th>Player</th><th>Item</th><th>Expected</th><th>Actual</th><th>Detail</th></tr>
+                      </thead>
+                      <tbody>
+                        \${rows.map(row => \`
+                          <tr class="clickable-row" onclick="inspectPlayer('\${escapeHtml(row.player)}')">
+                            <td class="nowrap"><strong>\${escapeHtml(row.player)}</strong></td>
+                            <td>\${escapeHtml(formatLabel(row.item))}</td>
+                            <td><code>\${escapeHtml(row.expected)}</code></td>
+                            <td><code>\${escapeHtml(row.actual)}</code></td>
+                            <td style="max-width:350px; font-size:11px; color:var(--text-muted); word-break:break-all;">\${escapeHtml(row.detail || "")}</td>
+                          </tr>
+                        \`).join("")}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          \`;
+        });
+        defectsContainer.innerHTML = html;
+      } else {
+        defectsContainer.innerHTML = \`<div class="panel" style="padding: 20px; text-align: center; color: var(--text-muted);">\${labels.noDefects}</div>\`;
+      }
+
+      // 3. Warnings Grouped Accordion
+      const warningsContainer = document.getElementById('warnings-grouped-container');
+      const warningsList = [];
+      state.players.forEach(p => {
+        (p.warnings || []).forEach(w => {
+          warningsList.push({ type: "Crawler warning", player: p.name, item: "warning", url: p.url, detail: w });
+        });
+        (p.events || []).forEach(ev => {
+          if (ev.resultSkipped && /(result|ranklimit|resultlimit|비활|결과|검증)/i.test(ev.resultSkipped)) {
+            warningsList.push({ type: "Result skipped", player: p.name, item: ev.eventName, url: ev.resultUrl || ev.disabledResultUrl || p.url, detail: ev.resultSkipped });
+          }
+        });
+      });
+
+      if (warningsList.length) {
+        // Group by type
+        const groupedWarnings = {};
+        warningsList.forEach(row => {
+          const type = row.type || "Other";
+          if (!groupedWarnings[type]) groupedWarnings[type] = [];
+          groupedWarnings[type].push(row);
+        });
+
+        let html = '';
+        Object.entries(groupedWarnings).forEach(([type, rows]) => {
+          const typeKey = type.replace(/[^a-zA-Z0-9]/g, '-');
+          const localizedType = formatKoreanDefectType(type);
+
+          html += \`
+            <div class="group-card">
+              <div class="group-header" onclick="toggleGroupCollapse('warnings', '\${typeKey}')">
+                <div class="group-header-left">
+                  <span class="status-badge warn">\${escapeHtml(localizedType)}</span>
+                  <span class="item-count-badge">\${rows.length} \${isKo ? '건' : 'items'}</span>
+                </div>
+                <svg class="group-arrow-icon" id="warnings-group-arrow-\${typeKey}" viewBox="0 0 24 24" style="transform: rotate(0deg);"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg>
+              </div>
+              <div class="group-body collapsed" id="warnings-group-body-\${typeKey}">
+                <div class="group-body-inner">
+                  <div class="table-container" style="border-top: 1px solid var(--border);">
+                    <table>
+                      <thead>
+                        <tr><th>Player</th><th>Item</th><th>Detail</th></tr>
+                      </thead>
+                      <tbody>
+                        \${rows.map(row => \`
+                          <tr class="clickable-row" onclick="inspectPlayer('\${escapeHtml(row.player)}')">
+                            <td class="nowrap"><strong>\${escapeHtml(row.player)}</strong></td>
+                            <td>\${row.url ? \`<a href="\${escapeHtml(row.url)}" target="_blank" onclick="event.stopPropagation();">\${escapeHtml(formatLabel(row.item))}</a>\` : escapeHtml(formatLabel(row.item))}</td>
+                            <td style="max-width:600px; font-size:12px; color:var(--text-muted); word-break:break-word;">\${escapeHtml(localizeWarning(row.detail || ""))}</td>
+                          </tr>
+                        \`).join("")}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          \`;
+        });
+        warningsContainer.innerHTML = html;
+      } else {
+        warningsContainer.innerHTML = \`<div class="panel" style="padding: 20px; text-align: center; color: var(--text-muted);">\${labels.noReviewNotes}</div>\`;
+      }
+    }
+
+    // Toggle grouped accordion view
+    function toggleGroupCollapse(type, groupKey) {
+      const body = document.getElementById(\`\${type}-group-body-\${groupKey}\`);
+      const icon = document.getElementById(\`\${type}-group-arrow-\${groupKey}\`);
+      if (!body || !icon) return;
+
+      const isCollapsed = body.classList.toggle('collapsed');
+      if (isCollapsed) {
+        icon.style.transform = 'rotate(0deg)';
+      } else {
+        icon.style.transform = 'rotate(180deg)';
+      }
+    }
+
+    // Toggle player accordion view
+    function toggleAccordion(playerName) {
+      const card = document.querySelector(\`.player-card[data-name="\${playerName}"]\`);
+      if (!card) return;
+      const content = card.querySelector('.accordion-content');
+      const icon = card.querySelector('.arrow-icon');
+
+      const isOpen = content.classList.contains('open');
+      if (isOpen) {
+        content.classList.remove('open');
+        icon.style.transform = 'rotate(0deg)';
+      } else {
+        content.classList.add('open');
+        icon.style.transform = 'rotate(180deg)';
+
+        // Active line animation initialization on first expand
+        const activeTab = activeSubTabs[playerName] || 'summary';
+        setTimeout(() => switchSubTab(playerName, activeTab), 10);
+      }
+    }
+
+    // Switch nested player profile sub-tabs
+    function switchSubTab(playerName, tabName) {
+      activeSubTabs[playerName] = tabName;
+      const card = document.querySelector(\`.player-card[data-name="\${playerName}"]\`);
+      if (!card) return;
+
+      card.querySelectorAll('.sub-tab-btn').forEach(btn => btn.classList.remove('active'));
+      card.querySelectorAll('.sub-tab-content').forEach(c => c.classList.remove('active'));
+
+      const targetBtn = card.querySelector(\`.sub-tab-btn[data-tab="\${tabName}"]\`);
+      const targetContent = card.querySelector(\`.sub-tab-content[data-tab="\${tabName}"]\`);
+
+      if (targetBtn) targetBtn.classList.add('active');
+      if (targetContent) targetContent.classList.add('active');
+
+      // Update underline bar position
+      const bar = card.querySelector('.tab-active-bar');
+      if (bar && targetBtn) {
+        bar.style.left = targetBtn.offsetLeft + 'px';
+        bar.style.width = targetBtn.offsetWidth + 'px';
+      }
+    }
+
+    // Event listing pagination and search rendering inside player details
+    function renderPlayerEvents(playerName) {
+      const card = document.querySelector(\`.player-card[data-name="\${playerName}"]\`);
+      if (!card) return;
+      const tbody = card.querySelector('.events-tbody');
+      const pageInfo = card.querySelector('.events-page-info');
+      const prevBtn = card.querySelector('.events-prev-btn');
+      const nextBtn = card.querySelector('.events-next-btn');
+
+      const player = state.players.find(p => p.name === playerName);
+      if (!player) return;
+
+      const events = player.events || [];
+      const searchQuery = (eventSearchQuery[playerName] || '').toLowerCase();
+      const filteredEvents = events.filter(e => e.eventName.toLowerCase().includes(searchQuery));
+
+      const page = eventPages[playerName] || 1;
+      const pageSize = 10;
+      const totalPages = Math.ceil(filteredEvents.length / pageSize) || 1;
+      const startIndex = (page - 1) * pageSize;
+      const pagedEvents = filteredEvents.slice(startIndex, startIndex + pageSize);
+
+      if (pagedEvents.length === 0) {
+        tbody.innerHTML = \`<tr><td colspan="7" style="text-align:center;color:var(--text-muted); font-size:12px;">\${isKo ? "일치하는 참가 이벤트가 없습니다." : "No events matched."}</td></tr>\`;
+      } else {
+        tbody.innerHTML = pagedEvents.map(event => {
+          const resStatus = event.resultPage ? event.resultPage.status : "pending";
+          const resText = event.resultPage ? formatStatus(event.resultPage.status) : "-";
+          const resultDetail = isKo ? formatKoreanResultFinding(event) : formatResultFinding(event);
+          const link = event.resultPage?.url ? event.resultPage.url : event.resultUrl;
+          return \`
+            <tr>
+              <td><strong>\${escapeHtml(event.eventName)}</strong></td>
+              <td class="nowrap">\${escapeHtml(event.date || "-")}</td>
+              <td class="nowrap">\${escapeHtml(event.rankText || event.rank || "-")}</td>
+              <td class="nowrap">\${escapeHtml(formatValue("totalEarnings", event.earnings))}</td>
+              <td>\${link ? \`<a href="\${escapeHtml(link)}" target="_blank" onclick="event.stopPropagation();">Link</a>\` : "-"}</td>
+              <td><span class="status-badge \${resStatus}">\${escapeHtml(resText)}</span></td>
+              <td style="font-size:12px;color:var(--text-muted);max-width:320px;word-break:break-all;">\${escapeHtml(resultDetail)}</td>
+            </tr>
+          \`;
+        }).join("");
+      }
+
+      if (pageInfo) pageInfo.textContent = \`\${page} / \${totalPages} (\${filteredEvents.length})\`;
+      if (prevBtn) prevBtn.disabled = page === 1;
+      if (nextBtn) nextBtn.disabled = page === totalPages;
+    }
+
+    function changeEventPage(playerName, direction) {
+      let page = eventPages[playerName] || 1;
+      page += direction;
+      eventPages[playerName] = page;
+      renderPlayerEvents(playerName);
+    }
+
+    function searchEvents(playerName, query) {
+      eventSearchQuery[playerName] = query;
+      eventPages[playerName] = 1; // Reset to page 1
+      renderPlayerEvents(playerName);
+    }
+
+    // Build single player card UI
+    function buildPlayerCard(player) {
+      const hasWarning = player.warnings && player.warnings.length > 0;
+      const statusText = formatStatus(player.status);
+      const isExpanded = activeSubTabs[player.name] ? 'open' : '';
+      const totalEvents = player.events?.length ?? 0;
+
+      return \`
+        <div class="player-card" data-status="\${player.status}" data-name="\${escapeHtml(player.name)}">
+          <div class="player-header" onclick="toggleAccordion('\${escapeHtml(player.name)}')">
+            <div class="player-info-left">
+              <h3>\${highlightText(player.name, state.searchQuery)}</h3>
+              <div class="player-meta-info">
+                <span>🔗 <a href="\${escapeHtml(player.url)}" onclick="event.stopPropagation();" target="_blank">\${escapeHtml(player.url)}</a></span>
+                <span>🏆 Cashed Events: <strong>\${totalEvents}</strong></span>
+                <span>📊 Cashes (Profile): <strong>\${player.summary?.cashes ?? "-"}</strong></span>
+                <span>🔄 Load More: <strong>\${player.expansion?.loadMoreClicks ?? 0}</strong></span>
+              </div>
+            </div>
+            <div class="player-header-right">
+              <span class="status-badge \${player.status}">\${escapeHtml(statusText)}</span>
+              <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg>
+            </div>
+          </div>
+
+          <div class="accordion-content">
+            <div class="accordion-inner">
+              <div class="player-body-wrapper">
+                \${player.error ? \`<div class="defects-summary-box"><h4>⚠️ Crawl Error</h4><p>\${escapeHtml(player.error)}</p></div>\` : ""}
+                \${hasWarning ? \`
+                  <div class="defects-summary-box" style="background:var(--warning-bg);border-color:rgba(245,158,11,0.3);color:var(--text-main);">
+                    <h4>⚠️ Warnings</h4>
+                    <ul>
+                      \${player.warnings.map(w => \`<li>\${escapeHtml(localizeWarning(w))}</li>\`).join("")}
+                    </ul>
+                  </div>
+                \` : ""}
+
+                <!-- Tab Headers -->
+                <div class="sub-tabs-container">
+                  <button class="sub-tab-btn" data-tab="summary" onclick="switchSubTab('\${escapeHtml(player.name)}', 'summary')">\${isKo ? "1. 요약 메트릭 검증" : "1. Summary Checks"}</button>
+                  <button class="sub-tab-btn" data-tab="tabs" onclick="switchSubTab('\${escapeHtml(player.name)}', 'tabs')">\${isKo ? "2. 프로필 탭 검증" : "2. Profile Tab Integrity"}</button>
+                  <button class="sub-tab-btn" data-tab="events" onclick="switchSubTab('\${escapeHtml(player.name)}', 'events')">\${isKo ? "3. 참가 이벤트 결과 검증" : "3. Result Verification"}</button>
+                  <div class="tab-active-bar"></div>
+                </div>
+
+                <!-- Sub-tab Content: Summary Metrics -->
+                <div class="sub-tab-content" data-tab="summary">
+                  <h4 style="margin:0 0 12px;font-family:'Outfit',sans-serif;">Summary Metrics Check</h4>
+                  <table style="width:100%;">
+                    <thead>
+                      <tr><th>Stat</th><th>\${labels.profileStat}</th><th>\${labels.calculatedValue}</th><th>\${labels.statusText}</th></tr>
+                    </thead>
+                    <tbody>
+                      \${(player.comparisons || []).map(item => \`
+                        <tr>
+                          <td><strong>\${escapeHtml(formatLabel(item.label))}</strong></td>
+                          <td>\${escapeHtml(formatValue(item.label, item.top))}</td>
+                          <td>\${escapeHtml(formatValue(item.label, item.calculated))}</td>
+                          <td><span class="status-badge \${item.status}">\${escapeHtml(formatStatus(item.status))}</span></td>
+                        </tr>
+                      \`).join("")}
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Sub-tab Content: Profile Tab Integrity -->
+                <div class="sub-tab-content" data-tab="tabs">
+                  <h4 style="margin:0 0 12px;font-family:'Outfit',sans-serif;">Profile Tabs Integrity</h4>
+                  <table style="width:100%;">
+                    <thead>
+                      <tr><th>\${labels.tabHeader}</th><th>\${labels.selectedTabLabel}</th><th>\${labels.profileStat}</th><th>\${labels.visibleRows}</th><th>\${labels.statusText}</th></tr>
+                    </thead>
+                    <tbody>
+                      \${(player.tabChecks || []).map(item => \`
+                        <tr>
+                          <td><strong>\${escapeHtml(formatLabel(item.label))}</strong></td>
+                          <td><code>\${escapeHtml(item.selectedTab || "-")}</code></td>
+                          <td>\${escapeHtml(formatValue(item.label, item.expected))}</td>
+                          <td>\${escapeHtml(formatValue(item.label, item.actual))}</td>
+                          <td><span class="status-badge \${item.status}">\${escapeHtml(formatStatus(item.status))}</span></td>
+                        </tr>
+                      \`).join("")}
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Sub-tab Content: Events results list -->
+                <div class="sub-tab-content" data-tab="events">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                    <h4 style="margin:0; font-family:'Outfit',sans-serif;">Cashed Events Results Matching</h4>
+                    <div class="search-box" style="min-width:200px; flex:0 1 250px;">
+                      <svg viewBox="0 0 24 24"><path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/></svg>
+                      <input type="text" class="events-search-input" placeholder="\${labels.searchEventsPlaceholder}" oninput="searchEvents('\${escapeHtml(player.name)}', this.value)">
+                    </div>
+                  </div>
+
+                  <div class="table-container">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>\${labels.seriesEvent}</th>
+                          <th>\${labels.dateText}</th>
+                          <th>\${labels.rankText}</th>
+                          <th>\${labels.earningsText}</th>
+                          <th>\${labels.resultUrlText}</th>
+                          <th>\${labels.resultCheckText}</th>
+                          <th>\${labels.finalFindingText}</th>
+                        </tr>
+                      </thead>
+                      <tbody class="events-tbody">
+                        <!-- Filled dynamically -->
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div class="pagination-bar">
+                    <button class="mini-btn events-prev-btn" onclick="changeEventPage('\${escapeHtml(player.name)}', -1)">◀ Prev</button>
+                    <span class="events-page-info">1 / 1 (0)</span>
+                    <button class="mini-btn events-next-btn" onclick="changeEventPage('\${escapeHtml(player.name)}', 1)">Next ▶</button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      \`;
+    }
+
+    function renderPlayerList() {
+      const container = document.getElementById('players-list');
+      const filtered = getFilteredAndSortedPlayers();
+
+      if (filtered.length === 0) {
+        container.innerHTML = \`<div style="text-align:center;padding:50px;color:var(--text-muted);background:var(--bg-card);border-radius:20px;border:var(--card-border);">\${isKo ? "조건에 부합하는 선수가 없습니다." : "No players matched your criteria."}</div>\`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(buildPlayerCard).join("");
+
+      // Trigger lazy pagination rendering for events inside expanded cards
+      filtered.forEach(p => {
+        const card = document.querySelector(\`.player-card[data-name="\${p.name}"]\`);
+        const content = card.querySelector('.accordion-content');
+        if (content.classList.contains('open') || activeSubTabs[p.name]) {
+          renderPlayerEvents(p.name);
+          switchSubTab(p.name, activeSubTabs[p.name] || 'summary');
         }
       });
     }
 
+    // Filter control callback triggers
+    function filterByStatus(status) {
+      state.statusFilter = status;
+
+      // Update UI active button
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        if (btn.getAttribute('data-filter') === status) btn.classList.add('active');
+        else btn.classList.remove('active');
+      });
+
+      renderPlayerList();
+
+      // Auto-scroll to directory if KPI was clicked
+      document.getElementById('player-directory').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function filterByCategory(category) {
+      state.categoryFilter = category;
+      renderPlayerList();
+    }
+
+    function sortPlayers(sortBy) {
+      state.sortBy = sortBy;
+      renderPlayerList();
+    }
+
+    // Search text field input listener
+    const searchInput = document.getElementById('search-input');
     searchInput.addEventListener('input', (e) => {
-      searchQuery = e.target.value.toLowerCase();
-      filterPlayers();
+      state.searchQuery = e.target.value;
+      renderPlayerList();
     });
 
-    filterBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        filterBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentFilter = btn.getAttribute('data-filter');
-        filterPlayers();
+    // Inspector Click to Scroll & Expand player card
+    function inspectPlayer(playerName) {
+      // Clear filters
+      searchInput.value = '';
+      state.searchQuery = '';
+      state.statusFilter = 'all';
+      state.categoryFilter = 'all';
+
+      // Update Filter buttons & selectors
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        if (btn.getAttribute('data-filter') === 'all') btn.classList.add('active');
+        else btn.classList.remove('active');
       });
+      document.getElementById('category-filter').value = 'all';
+
+      renderPlayerList();
+
+      // Find player card element
+      setTimeout(() => {
+        const card = document.querySelector(\`.player-card[data-name="\${playerName}"]\`);
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+          const content = card.querySelector('.accordion-content');
+          const icon = card.querySelector('.arrow-icon');
+
+          if (!content.classList.contains('open')) {
+            content.classList.add('open');
+            icon.style.transform = 'rotate(180deg)';
+            renderPlayerEvents(playerName);
+            switchSubTab(playerName, activeSubTabs[playerName] || 'summary');
+          }
+
+          card.classList.remove('pulse-glow');
+          void card.offsetWidth; // Reflow reset
+          card.classList.add('pulse-glow');
+          setTimeout(() => card.classList.remove('pulse-glow'), 2500);
+        }
+      }, 100);
+    }
+
+    // Initialize Chart.js
+    function initCharts() {
+      // Chart.js requires loaded context
+      if (typeof Chart === 'undefined') {
+        console.warn("Chart.js was not loaded. Falling back to SVG graphs.");
+        showFallbackCharts();
+        return;
+      }
+
+      // Destroy old chart instances if they exist
+      if (statusChartInstance) {
+        statusChartInstance.destroy();
+        statusChartInstance = null;
+      }
+      if (defectsChartInstance) {
+        defectsChartInstance.destroy();
+        defectsChartInstance = null;
+      }
+
+      try {
+        const ctx1 = document.getElementById('statusChart');
+        const ctx2 = document.getElementById('defectsChart');
+
+        // Dynamically read computed theme colors
+        const style = getComputedStyle(document.documentElement);
+        const textMutedColor = style.getPropertyValue('--text-muted').trim() || '#94a3b8';
+        const borderGridColor = style.getPropertyValue('--border').trim() || 'rgba(255, 255, 255, 0.08)';
+
+        // 1. Data Integrity Doughnut Chart
+        const integrityData = {
+          passed: ${summary.passedPlayers},
+          warned: ${summary.warnedPlayers || 0},
+          failed: ${summary.failedPlayers}
+        };
+
+        const integrityLabels = isKo ? ['통과', '주의', '실패'] : ['Passed', 'Warned', 'Failed'];
+
+        statusChartInstance = new Chart(ctx1, {
+          type: 'doughnut',
+          data: {
+            labels: integrityLabels,
+            datasets: [{
+              data: [integrityData.passed, integrityData.warned, integrityData.failed],
+              backgroundColor: [
+                style.getPropertyValue('--success').trim() || '#10b981',
+                style.getPropertyValue('--warning').trim() || '#f59e0b',
+                style.getPropertyValue('--danger').trim() || '#ef4444'
+              ],
+              borderWidth: 2,
+              borderColor: document.body.classList.contains('light-mode') ? '#ffffff' : '#151d30'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: {
+                  color: textMutedColor,
+                  font: { family: 'Outfit', size: 12 }
+                }
+              }
+            },
+            cutout: '65%'
+          }
+        });
+
+        // 2. Defect Categories Horizontal Bar Chart
+        const defectTypes = {};
+        state.players.flatMap(p => p.defects || []).forEach(d => {
+          const type = d.type;
+          defectTypes[type] = (defectTypes[type] || 0) + 1;
+        });
+
+        const barLabels = Object.keys(defectTypes).map(t => formatKoreanDefectType(t));
+        const barData = Object.values(defectTypes);
+
+        if (barData.length === 0) {
+          ctx2.style.display = 'none';
+          document.getElementById('defectsFallback').style.display = 'block';
+          document.getElementById('defectsFallback').innerHTML = \`🎉 <strong style="color:var(--success);">\${isKo ? "모든 검증을 완벽하게 통과했습니다." : "100% Integrity - No defects found."}</strong>\`;
+        } else {
+          ctx2.style.display = 'block';
+          document.getElementById('defectsFallback').style.display = 'none';
+
+          defectsChartInstance = new Chart(ctx2, {
+            type: 'bar',
+            data: {
+              labels: barLabels,
+              datasets: [{
+                label: isKo ? '검출 건수' : 'Count',
+                data: barData,
+                backgroundColor: 'rgba(139, 92, 246, 0.7)',
+                borderColor: '#8b5cf6',
+                borderWidth: 1.5,
+                borderRadius: 6
+              }]
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false }
+              },
+              scales: {
+                x: {
+                  grid: { color: borderGridColor },
+                  ticks: { color: textMutedColor, precision: 0 }
+                },
+                y: {
+                  grid: { display: false },
+                  ticks: {
+                    color: textMutedColor,
+                    font: { family: 'Inter', size: 11 }
+                  }
+                }
+              }
+            }
+          });
+        }
+
+        // 성공적으로 Chart.js 렌더링 완료 시 캔버스 보이기 및 폴백 숨김
+        ctx1.style.display = 'block';
+        document.getElementById('radialFallback').style.display = 'none';
+      } catch (error) {
+        console.error("Failed to initialize Chart.js charts, using fallback:", error);
+        showFallbackCharts();
+      }
+    }
+
+    function showFallbackCharts() {
+      document.getElementById('statusChart').style.display = 'none';
+      document.getElementById('defectsChart').style.display = 'none';
+      document.getElementById('radialFallback').style.display = 'block';
+      document.getElementById('defectsFallback').style.display = 'block';
+    }
+
+    // 브라우저의 새로고침 시 자동 스크롤 복원 동작 차단
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual';
+    }
+
+    // App Initialization bootstrap
+    window.addEventListener('DOMContentLoaded', () => {
+      populateStaticTables();
+      renderPlayerList();
+      initCharts();
+
+      // 새로고침 시 화면 중간(차트 영역인 데이터 무결성 통과 및 카테고리 분포도)으로 자동 스크롤
+      setTimeout(() => {
+        const vizRow = document.querySelector('.visualizations-row');
+        if (vizRow) {
+          vizRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
     });
   </script>
 </body>
 </html>
 `;
-}
-
-function renderHtml(report) {
-  return renderReportTemplate(report, false);
-}
-
-function renderKoreanHtml(report) {
-  return renderReportTemplate(report, true);
 }
 
 function writeJson(filePath, payload) {
@@ -3466,6 +4269,7 @@ function writeReportArtifacts(args, report) {
   const koreanHtml = koreanHtmlPath(args.html);
   fs.writeFileSync(koreanHtml, renderKoreanHtml(report), "utf8");
   writeCsv(args.defects, flattenDefects(report));
+
   return koreanHtml;
 }
 
@@ -3767,9 +4571,9 @@ function runSelfTest() {
   }));
   const sampleReport = { playersUrl: DEFAULT_PLAYERS_URL, players: [{ name: "Sample", url: "https://example.test/player", summary, events, expansion: {}, tabChecks, calculated, comparisons, defects: [], warnings: [], status: "pass" }] };
   const html = renderHtml(sampleReport);
-  if (!html.includes("WSOP Player Standings Crawler Report")) throw new Error("HTML render failed");
+  if (!html.includes("WSOP Player Standings Premium Dashboard")) throw new Error("HTML render failed");
   const koreanHtml = renderKoreanHtml(sampleReport);
-  if (!koreanHtml.includes("WSOP 선수 순위 크롤러 리포트")) throw new Error("Korean HTML render failed");
+  if (!koreanHtml.includes("WSOP 선수 순위 크롤러 프리미엄 대시보드")) throw new Error("Korean HTML render failed");
   const partialReport = buildCrawlerReport({
     startedAt: new Date().toISOString(),
     finishedAt: new Date().toISOString(),
@@ -3904,14 +4708,14 @@ async function main() {
     process.on("SIGTERM", handleStopSignal);
 
     writeProgressReport("running");
-    
+
     console.log(`[크롤러 시작] 총 ${playerEntries.length}명의 선수를 병렬 크롤링합니다. (동시성: ${concurrency})`);
 
     const worker = async () => {
       while (!stopRequested && queue.length > 0) {
         const { entry, index } = queue.shift();
         console.log(`  [크롤러] [${index + 1}/${playerEntries.length}] 크롤링 개시: ${entry.url}`);
-        
+
         try {
           // 개별 크롤러 실행을 백오프 재시도로 안전하게 래핑
           const playerResult = await retryWithBackoff(async () => {
