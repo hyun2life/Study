@@ -1,0 +1,18 @@
+{
+  "name": "wsop-web-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smoke tests for public wsop.com pages",
+  "scripts": {
+    "test:smoke": "playwright test tests/smoke --project=chromium-desktop",
+    "test:smoke:mobile": "playwright test tests/smoke --project=mobile-chrome",
+    "test:smoke:all": "playwright test tests/smoke",
+    "report": "playwright show-report",
+    "report:smoke:ko": "start automation\\output\\wsop-public-smoke-latest-report-ko.html",
+    "report:smoke:en": "start automation\\output\\wsop-public-smoke-latest-report.html"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "typescript": "^5.8.3"
+  }
+}

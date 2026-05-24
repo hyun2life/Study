@@ -1,0 +1,304 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #0b0f14;
+  color: #f4f7fb;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.agd-review-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 90000;
+  display: grid;
+  gap: 12px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #293241;
+  background: rgba(11, 15, 20, 0.96);
+  color: #f4f7fb;
+  backdrop-filter: blur(12px);
+}
+
+.agd-review-toolbar h1 {
+  margin: 4px 0 0;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.agd-path-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.agd-path-form input,
+.agd-prompt-preview textarea,
+.agd-panel input,
+.agd-panel textarea {
+  width: 100%;
+  border: 1px solid #344052;
+  border-radius: 8px;
+  background: #0f151c;
+  color: #f4f7fb;
+  padding: 12px;
+}
+
+.agd-path-form button,
+.agd-toolbar-actions button,
+.agd-primary-action {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: #d61f2c;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 0 16px;
+}
+
+.agd-path-form button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.agd-toolbar-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  color: #a8b3c4;
+  font-size: 13px;
+}
+
+.agd-toolbar-actions button {
+  min-height: 34px;
+  background: #273244;
+  font-size: 13px;
+}
+
+.agd-prompt-preview {
+  border: 1px solid #293241;
+  border-radius: 8px;
+  background: #111821;
+  padding: 10px;
+}
+
+.agd-prompt-preview summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.agd-prompt-preview textarea {
+  min-height: 150px;
+  margin-top: 10px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+}
+
+.agd-loaded-file {
+  display: grid;
+  gap: 3px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #293241;
+  background: #151c25;
+  color: #f4f7fb;
+}
+
+.agd-loaded-file span {
+  color: #a8b3c4;
+  font-size: 12px;
+}
+
+.agd-rendered-html {
+  min-height: 70vh;
+}
+
+.agd-app-shell {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 40px 0 72px;
+}
+
+.agd-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: end;
+  padding: 34px;
+  border: 1px solid #293241;
+  border-radius: 10px;
+  background: #141a22;
+}
+
+.agd-eyebrow {
+  margin: 0 0 10px;
+  color: #f5c542;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.agd-hero h2,
+.agd-panel h3,
+.agd-panel p {
+  margin-top: 0;
+}
+
+.agd-hero h2 {
+  max-width: 760px;
+  margin-bottom: 14px;
+  font-size: clamp(30px, 5vw, 54px);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.agd-lede {
+  max-width: 680px;
+  margin-bottom: 0;
+  color: #a8b3c4;
+  font-size: 17px;
+}
+
+.agd-workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.agd-panel {
+  min-height: 260px;
+  padding: 24px;
+  border: 1px solid #293241;
+  border-radius: 10px;
+  background: #151c25;
+}
+
+.agd-panel.agd-wide {
+  grid-column: 1 / -1;
+}
+
+.agd-panel-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.agd-panel h3 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.agd-panel p {
+  color: #a8b3c4;
+}
+
+.agd-status-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 99px;
+  background: #2ea043;
+}
+
+.agd-status-dot.agd-amber {
+  background: #f5c542;
+}
+
+.agd-status-dot.agd-red {
+  background: #d61f2c;
+}
+
+.agd-metric-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.agd-metric-row div {
+  padding: 16px;
+  border: 1px solid #293241;
+  border-radius: 8px;
+  background: #10161e;
+}
+
+.agd-metric-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #a8b3c4;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agd-metric-row strong {
+  font-size: 34px;
+}
+
+.agd-panel label {
+  display: block;
+  margin-top: 16px;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.agd-panel input,
+.agd-panel textarea {
+  margin-top: 8px;
+}
+
+.agd-panel textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.agd-panel table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border: 1px solid #293241;
+  border-radius: 8px;
+}
+
+.agd-panel th,
+.agd-panel td {
+  padding: 13px 14px;
+  border-bottom: 1px solid #293241;
+  text-align: left;
+}
+
+.agd-panel th {
+  color: #a8b3c4;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.agd-panel tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (max-width: 760px) {
+  .agd-path-form,
+  .agd-hero,
+  .agd-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .agd-hero {
+    padding: 24px;
+  }
+}
