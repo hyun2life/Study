@@ -16,13 +16,14 @@ rem RESULT_RANK_LIMIT: skip Result checks when rank is above this. 0 means no ra
 rem MAX_LOAD_MORE: profile ALL-tab Load more clicks.
 rem RESULT_PAGE_LIMIT: Final Result pages to inspect per Result. 0 checks every page.
 rem DISABLED_RESULT_MODE: skip, fail, or check disabled Result controls.
-set "PLAYER_LIMIT=10"
-set "RESULT_LIMIT=0"
-set "RESULT_RANK_LIMIT=0"
-set "MAX_LOAD_MORE=100"
-set "RESULT_PAGE_LIMIT=0"
-set "DISABLED_RESULT_MODE=skip"
-set "CONCURRENCY=10"
+if "%PLAYER_LIMIT%"=="" set "PLAYER_LIMIT=10"
+if "%RESULT_LIMIT%"=="" set "RESULT_LIMIT=0"
+if "%RESULT_RANK_LIMIT%"=="" set "RESULT_RANK_LIMIT=0"
+if "%MAX_LOAD_MORE%"=="" set "MAX_LOAD_MORE=100"
+if "%RESULT_PAGE_LIMIT%"=="" set "RESULT_PAGE_LIMIT=0"
+if "%DISABLED_RESULT_MODE%"=="" set "DISABLED_RESULT_MODE=skip"
+if "%CONCURRENCY%"=="" set "CONCURRENCY=10"
+if "%AUTH_WAIT_MS%"=="" set "AUTH_WAIT_MS=300000"
 
 echo ============================================
 echo WSOP LIVE Player Standings Crawler (Improved)
@@ -36,15 +37,25 @@ echo A browser will open. Keep it open until the report is generated.
 echo.
 
 set "CRAWLER_SCRIPT=automation\run_player_standings_crawler.ps1"
-set "PLAYERS_URL=https://www.wsop.com/player-standings/"
+if not "%BASE_URL%"=="" (
+  set "PLAYERS_URL=%BASE_URL%/player-standings/"
+) else (
+  set "PLAYERS_URL=https://www.wsop.com/player-standings/"
+)
 set "OUTPUT_TAG=wsop-player-crawler-live"
+
+if "%HEADED%"=="" set "HEADED=true"
+if "%HEADED%"=="true" (set "HEADED_FLAG=-Headed") else (set "HEADED_FLAG=")
+
+if "%UI%"=="true" (set "UI_FLAG=-Ui") else (set "UI_FLAG=")
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%CRAWLER_SCRIPT%" ^
   -PlayersUrl "%PLAYERS_URL%" ^
   -OutputTag "%OUTPUT_TAG%" ^
   -RunId "%RUN_ID%" ^
-  -Headed ^
-  -AuthWaitMs 300000 ^
+  %HEADED_FLAG% ^
+  %UI_FLAG% ^
+  -AuthWaitMs %AUTH_WAIT_MS% ^
   -Limit %PLAYER_LIMIT% ^
   -ResultLimit %RESULT_LIMIT% ^
   -ResultRankLimit %RESULT_RANK_LIMIT% ^

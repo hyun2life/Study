@@ -3,7 +3,9 @@ const os = require('os');
 const path = require('path');
 
 const OUTPUT_DIR = path.join(process.cwd(), 'automation', 'output');
-const RUN_ID = process.env.SMOKE_REPORT_RUN_ID || timestampForFile();
+const RUN_ID = process.env.WSOP_REPORT_RUN_ID || process.env.SMOKE_REPORT_RUN_ID || timestampForFile();
+const REPORT_SUITE = normalizeReportSuite(process.env.WSOP_REPORT_SUITE) || 'smoke';
+const REPORT_PREFIX = process.env.WSOP_REPORT_PREFIX || `wsop-public-${REPORT_SUITE}`;
 
 class WsopSmokeHtmlReporter {
   constructor() {
@@ -50,8 +52,10 @@ class WsopSmokeHtmlReporter {
       startedAt: this.startedAt.toISOString(),
       duration: Date.now() - this.startedAt.getTime(),
       status: normalizeOverallStatus(fullResult.status, this.results),
+      suite: REPORT_SUITE,
+      reportPrefix: REPORT_PREFIX,
       baseURL: process.env.BASE_URL || 'https://www.wsop.com',
-      playwrightHtmlReport: 'playwright-report/index.html',
+      playwrightHtmlReport: `automation/output/${REPORT_PREFIX}-${RUN_ID}-playwright-report/index.html`,
       node: process.version,
       platform: `${os.type()} ${os.release()} (${os.arch()})`,
       projects: [...new Set(this.results.map((item) => item.projectName))],
@@ -60,20 +64,17 @@ class WsopSmokeHtmlReporter {
 
     report.summary = summarize(report);
 
-    const jsonPath = path.join(OUTPUT_DIR, `wsop-public-smoke-${RUN_ID}-report.json`);
-    const htmlPath = path.join(OUTPUT_DIR, `wsop-public-smoke-${RUN_ID}-report.html`);
-    const koHtmlPath = path.join(OUTPUT_DIR, `wsop-public-smoke-${RUN_ID}-report-ko.html`);
-    const latestHtmlPath = path.join(OUTPUT_DIR, 'wsop-public-smoke-latest-report.html');
-    const latestKoHtmlPath = path.join(OUTPUT_DIR, 'wsop-public-smoke-latest-report-ko.html');
+    const jsonPath = path.join(OUTPUT_DIR, `${REPORT_PREFIX}-${RUN_ID}-report.json`);
+    const htmlPath = path.join(OUTPUT_DIR, `${REPORT_PREFIX}-${RUN_ID}-report.html`);
+    const koHtmlPath = path.join(OUTPUT_DIR, `${REPORT_PREFIX}-${RUN_ID}-report-ko.html`);
 
     fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2), 'utf8');
     fs.writeFileSync(htmlPath, renderDashboard(report, false), 'utf8');
     fs.writeFileSync(koHtmlPath, renderDashboard(report, true), 'utf8');
-    fs.copyFileSync(htmlPath, latestHtmlPath);
-    fs.copyFileSync(koHtmlPath, latestKoHtmlPath);
 
-    console.log(`WSOP smoke report: ${htmlPath}`);
-    console.log(`WSOP smoke Korean report: ${koHtmlPath}`);
+    console.log(`WSOP ${REPORT_SUITE} report: ${htmlPath}`);
+    console.log(`WSOP ${REPORT_SUITE} Korean report: ${koHtmlPath}`);
+    console.log(`WSOP ${REPORT_SUITE} Playwright report: ${path.join(OUTPUT_DIR, `${REPORT_PREFIX}-${RUN_ID}-playwright-report`, 'index.html')}`);
   }
 }
 
@@ -207,7 +208,7 @@ function renderDashboard(report, isKo) {
   <header>
     <div class="wrap hero">
       <div>
-        <div class="eyebrow">WSOP PUBLIC WEB SMOKE</div>
+        <div class="eyebrow">${escapeHtml(`WSOP PUBLIC WEB ${report.suite.toUpperCase()}`)}</div>
         <h1>${escapeHtml(t.title)}</h1>
         <p class="subtitle">${escapeHtml(t.subtitle)}</p>
       </div>
@@ -233,6 +234,7 @@ function renderDashboard(report, isKo) {
             <span>${escapeHtml(t.baseUrl)}: <a href="${escapeHtml(report.baseURL)}">${escapeHtml(report.baseURL)}</a></span>
             <span>${escapeHtml(t.projects)}: ${escapeHtml(report.projects.join(', ') || '-')}</span>
             <span>${escapeHtml(t.generated)}: ${escapeHtml(formatDate(report.generatedAt))}</span>
+            <span>${escapeHtml(t.suiteLabel)}: ${escapeHtml(report.suite)}</span>
             <span>Run ID: ${escapeHtml(report.runId)}</span>
           </div>
           <div class="bar" aria-label="${escapeHtml(t.statusDistribution)}">
@@ -275,7 +277,7 @@ function renderDashboard(report, isKo) {
     <section class="panel">
       <h2>${escapeHtml(t.artifacts)}</h2>
       <div class="panel-body summary-line">
-        <span>${escapeHtml(t.playwrightReport)}: <a href="../../${escapeHtml(report.playwrightHtmlReport)}">${escapeHtml(report.playwrightHtmlReport)}</a></span>
+        <span>${escapeHtml(t.playwrightReport)}: <a href="${escapeHtml(`${report.reportPrefix}-${report.runId}-playwright-report/index.html`)}">${escapeHtml(report.playwrightHtmlReport)}</a></span>
         <span>Node: ${escapeHtml(report.node)}</span>
         <span>${escapeHtml(t.platform)}: ${escapeHtml(report.platform)}</span>
       </div>
@@ -301,6 +303,7 @@ function dictionary(isKo) {
     baseUrl: '대상 사이트',
     projects: '브라우저 프로젝트',
     generated: '생성 시간',
+    suiteLabel: '리포트 구분',
     statusDistribution: '상태 분포',
     readMeFirst: '먼저 볼 내용',
     noCriticalFailuresTitle: '치명 실패 없음',
@@ -334,6 +337,7 @@ function dictionary(isKo) {
     baseUrl: 'Base URL',
     projects: 'Browser Projects',
     generated: 'Generated',
+    suiteLabel: 'Report Suite',
     statusDistribution: 'Status Distribution',
     readMeFirst: 'Read Me First',
     noCriticalFailuresTitle: 'No Critical Failures',
@@ -496,6 +500,14 @@ function timestampForFile() {
     '-',
     pad(now.getMilliseconds(), 3),
   ].join('');
+}
+
+function normalizeReportSuite(value) {
+  if (!value) {
+    return '';
+  }
+
+  return value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
 function escapeHtml(value) {

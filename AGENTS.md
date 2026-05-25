@@ -34,3 +34,6 @@
 
 - 사용자가 만들었을 수 있는 기존 변경사항은 임의로 되돌리지 않는다.
 - `node_modules`, test-results, report output, build output 등 생성 산출물은 `.gitignore`에 포함한다.
+
+## Response
+- 사용자가 질문한 답변에는 생각하는 과정과, 결과물들은 기본적으로 한글로 대답한다.

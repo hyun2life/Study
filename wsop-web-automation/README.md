@@ -34,48 +34,38 @@ wsop-web-automation/
       links.spec.ts
   playwright.config.ts
   package.json
-  run-smoke.bat
-  run-smoke-headed.bat
-  run-smoke-ui.bat
+  Run.bat
 ```
 
-## 설치
+## 배포 및 초기 설치 (팀원 배포 시)
 
-처음 한 번만 실행합니다.
+프로젝트 폴더를 배포하기 전에, 용량이 거대하고 로컬 환경 종속성이 있는 **`node_modules` 폴더는 반드시 삭제하고 압축**하여 전달해 주세요.
 
-```bat
-npm install
-npx playwright install chromium
+팀원들은 압축을 푼 뒤 최초 1회 아래 절차에 따라 초기 설정을 완료해야 대시보드와 테스트가 정상 작동합니다.
+
+### 1. 전제 조건
+* 각 팀원의 PC에 **Node.js (LTS 버전)**가 설치되어 있어야 합니다. (다운로드: [https://nodejs.org/](https://nodejs.org/))
+
+### 2. 폴더 배치 요건 (크롤러 연동 필수)
+크롤러 테스트 구동 및 리포트 팝업 연동이 정상 작동하려면 아래와 같이 **두 프로젝트 폴더가 동일한 상위 디렉토리 아래에 형제(Sibling)로 나란히 배치**되어야 합니다.
+```text
+상위 폴더/
+  ├─ WSOP-Web-Automation/ (본 프로젝트)
+  └─ WSOP-Player-Standings-Crawler-Improved/ (크롤러 프로젝트)
 ```
 
-PowerShell 실행 정책 때문에 `npm`이 막히면 Windows에서는 아래처럼 `npm.cmd`를 사용하세요.
-
-```bat
-npm.cmd install
-npx.cmd playwright install chromium
-```
+### 3. 원클릭 초기 셋업 (Setup.bat)
+`WSOP-Web-Automation` 폴더 내에 있는 **`Setup.bat`** 파일을 실행합니다. 스크립트가 로컬 Node.js 유무를 검사한 후, 테스트에 필요한 npm 의존성 라이브러리 설치와 Playwright 브라우저 바이너리 설치를 원클릭으로 자동 완료해 줍니다.
 
 ## 실행 방법
 
-### Windows BAT
-
-기본 desktop smoke:
+### Windows BAT (통합 웹 대시보드 실행기)
 
 ```bat
-run-smoke.bat
+Run.bat
 ```
 
-브라우저를 실제로 보면서 실행:
-
-```bat
-run-smoke-headed.bat
-```
-
-Playwright UI 모드:
-
-```bat
-run-smoke-ui.bat
-```
+더블 클릭 또는 터미널에서 실행하면 백그라운드 웹 서버가 기동되며, 웹 브라우저 새 탭에서 세련된 다크 테마의 **Web UI 테스팅 대시보드**가 자동으로 열립니다. 여기서 테스트 단계(Phase)와 실행 모드(Normal / Headed / UI), 그리고 체크박스형 상세 옵션을 마우스 클릭만으로 구성하고, 가상 CLI 터미널을 통해 실시간 테스트 로그를 스트리밍하여 편리하게 검토할 수 있습니다.
 
 ### npm scripts
 
@@ -112,10 +102,41 @@ npm run report:smoke:en
 ```text
 automation/output/wsop-public-smoke-*-report-ko.html
 automation/output/wsop-public-smoke-*-report.html
-automation/output/wsop-public-smoke-latest-report-ko.html
-automation/output/wsop-public-smoke-latest-report.html
-playwright-report/index.html
+automation/output/wsop-public-smoke-*-report.json
+automation/output/wsop-public-smoke-*-playwright-report/index.html
+automation/output/wsop-public-functional-*-report-ko.html
+automation/output/wsop-public-functional-*-report.html
+automation/output/wsop-public-functional-*-report.json
+automation/output/wsop-public-functional-*-playwright-report/index.html
 test-results/
+```
+
+Smoke 리포트는 `WSOP-Player-Standings-Crawler-Improved`와 동일하게 실행 timestamp가 포함된 파일명으로 누적 저장합니다. 예:
+
+```text
+automation/output/wsop-public-smoke-20260525-015233-report.json
+automation/output/wsop-public-smoke-20260525-015233-report.html
+automation/output/wsop-public-smoke-20260525-015233-report-ko.html
+automation/output/wsop-public-smoke-20260525-015233-playwright-report/index.html
+```
+
+`wsop-public-smoke-latest-report*.html` 같은 덮어쓰기 파일은 더 이상 생성하지 않습니다. `npm run report:smoke:ko`, `npm run report:smoke:en`, `npm run report`는 `automation/output`에서 가장 최근 날짜별 리포트를 찾아 엽니다.
+
+Functional 리포트는 smoke와 분리해서 `wsop-public-functional-{timestamp}-...` prefix로 저장합니다. 예:
+
+```text
+automation/output/wsop-public-functional-20260525-021500-report.json
+automation/output/wsop-public-functional-20260525-021500-report.html
+automation/output/wsop-public-functional-20260525-021500-report-ko.html
+automation/output/wsop-public-functional-20260525-021500-playwright-report/index.html
+```
+
+Functional 리포트 열기:
+
+```bat
+npm run report:functional:ko
+npm run report:functional:en
+npm run report:functional
 ```
 
 한글 리포트가 기본 검토 대상입니다. 영문 리포트는 동일 데이터를 영어 UI로 보여줍니다.
@@ -135,18 +156,29 @@ test-results/
 
 ## 설정
 
-기본 대상 URL:
-
-```text
-https://www.wsop.com
-```
-
-다른 환경을 테스트하려면 `BASE_URL` 환경변수를 사용합니다.
+### 1. 테스트 대상 URL 변경
+기본 대상 URL은 `https://www.wsop.com` 입니다. 다른 환경(Staging, QA 등)을 테스트하려면 `BASE_URL` 환경변수를 사용합니다.
 
 ```bat
 set BASE_URL=https://www.wsop.com
 npm run test:smoke
 ```
+
+### 2. 웹 대시보드 서버 환경설정 (원격 / 회사 서버 배포 시)
+본 웹 테스팅 대시보드는 로컬뿐 아니라 **회사 공용 서버나 원격 VM**에서도 구동할 수 있도록 설계되었습니다. 아래의 환경 변수들을 통해 배포 환경에 맞춰 설정을 제어할 수 있습니다.
+
+* **`PORT`**: 대시보드가 통신을 수신할 포트 (기본값: `3000`)
+* **`HOST`**: 바인딩할 네트워크 어댑터 IP (기본값: `0.0.0.0` - 모든 네트워크 인터페이스를 통한 접근 허용)
+* **`AUTO_LAUNCH`**: 서버 기동 시 브라우저 창 자동 팝업 여부 (기본값: `true`, 원격 헤드리스 서버 등에서 자동 열기를 생략할 때는 `false` 주입)
+
+**회사/원격 서버 기동 예시:**
+```bat
+:: 포트를 8080으로 스위칭하고, 서버 자체 브라우저 자동 팝업은 비활성화
+set PORT=8080
+set AUTO_LAUNCH=false
+node scripts/web-runner-server.js
+```
+서버를 기동한 뒤, 같은 사무실 망 내의 팀원들은 각자 브라우저 주소창에 `http://(서버_IP_주소):8080`을 입력하여 공용 테스팅 채널로 원격 제어 및 모니터링이 가능합니다.
 
 ## 유지보수 포인트
 
@@ -169,6 +201,115 @@ playwright-report/
 blob-report/
 automation/output/
 ```
+
+## Phase 2 functional flow tests
+
+2차 자동화는 단순 접근 smoke를 넘어 public web 사용자가 실제로 정보를 탐색하는 핵심 흐름을 검증합니다.
+
+## Phase registry
+
+장기 자동화 단계는 [automation/phases.json](./automation/phases.json)에서 중앙 관리합니다. 새 단계가 추가될 때는 먼저 이 파일에 phase id, report suite, test folder, Playwright project, 구현 여부를 등록합니다.
+
+현재 등록 구조:
+
+```text
+phase1  smoke                  tests/smoke
+phase2  functional             tests/functional
+phase3  data-integrity         tests/data-integrity          planned
+phase4  search-filter-sort     tests/search-filter-sort      planned
+phase5  result-detail          tests/result-detail           planned
+phase6  performance-stability  tests/performance-stability   planned
+phase7  visual-regression      tests/visual-regression       planned
+phase8  regression             tests/regression              planned
+```
+
+공통 실행기:
+
+```bat
+npm run phase:list
+npm run test:phase1
+npm run test:phase2
+```
+
+또는 통합 GUI 실행기(`Run.bat`)를 통해 각 Phase를 선택해 실행할 수 있습니다.
+
+추가 Playwright 옵션은 `--` 뒤에 전달합니다.
+
+```bat
+npm run test:phase2 -- --headed
+```
+
+각 phase는 `reportSuite` 기준으로 별도 prefix의 리포트를 남깁니다.
+
+```text
+automation/output/wsop-public-smoke-YYYYMMDD-HHMMSS-...
+automation/output/wsop-public-functional-YYYYMMDD-HHMMSS-...
+automation/output/wsop-public-data-integrity-YYYYMMDD-HHMMSS-...
+```
+
+유지보수 원칙:
+
+- phase별 테스트는 `tests/<phase-area>/` 아래에 둡니다.
+- phase별 공통 helper는 해당 폴더의 `support.ts` 또는 `fixtures.ts`에서 시작하고, 여러 phase가 공유할 때만 `tests/support/`로 승격합니다.
+- 새 phase를 실제 실행 가능하게 만들 때는 `automation/phases.json`의 `implemented`를 `true`로 바꾸고 README 실행/산출물 설명을 갱신합니다.
+- `reportSuite`는 파일명 prefix에 들어가므로 짧고 안정적인 kebab-case를 사용합니다.
+
+대상 흐름:
+
+- Tournament Schedule: `/schedule/` 진입, schedule tab/filter 클릭 가능 여부, tournament detail 진입, list/detail 이벤트명 연계 확인
+- Player Search: `/player-search/` 진입, 검색 입력이 있으면 `Phil Hellmuth` 검색, 없거나 결과가 불안정하면 현재 player list 첫 항목으로 profile 진입
+- Player Standings: `/player-standings/` 진입, All-Time Earnings/Bracelets/Rings 랭킹 영역 확인, ranking player profile 진입
+- News: `/news/` 진입, 첫 news article 제목 저장, detail 진입, 제목/date/image/body 영역 확인
+
+추가 파일:
+
+```text
+tests/functional/
+  support.ts
+  tournament-schedule.spec.ts
+  player-search.spec.ts
+  player-standings.spec.ts
+  news.spec.ts
+```
+
+실행 명령:
+
+```bat
+npm run test:functional
+npm run test:phase2
+```
+
+두 script 모두 아래 Playwright 명령을 실행합니다.
+
+```bat
+playwright test tests/functional --project=chromium-desktop
+```
+
+Windows BAT (통합 웹 대시보드):
+
+```bat
+Run.bat
+```
+
+`Run.bat`은 로컬 웹 서버를 구동시켜 브라우저에서 웹 대시보드를 띄웁니다. 대시보드는 `automation/phases.json`을 읽기 때문에 새로운 phase가 추가되면 자동으로 사이드바 목록에 실시간 연동됩니다. 웹 대시보드에서 할 수 있는 작업은 다음과 같습니다.
+
+- **페이즈 카드 선택 및 실행**: 좌측 카드 목록에서 대상을 원클릭으로 선택 및 실행
+- **실행 옵션 및 모드 튜닝**: Normal / Headed / UI 모드 선택 및 체크박스 기반 추가 매개변수(Limit, Concurrency, Grep, Timeout 등) 실시간 토글링 및 텍스트박스 입력
+- **실시간 터미널 로그 스트리밍**: SSE 채널을 활용해 백그라운드 테스트 실행 콘솔 로그를 컬러풀하게 스트리밍 및 자동 스크롤
+- **원클릭 프로세스 제어**: 실행 도중 언제든지 즉시 중단 가능한 **Stop Test** 및 로그 복사/비우기 기능 제공
+- **리포트 보기**: 검은색 cmd 깜빡임이나 잔재 창 없이, 새 브라우저 탭으로 즉시 열리는 KO / EN / Playwright Trace 리포트 연동
+
+2차 범위에서 의도적으로 제외한 항목:
+
+- DB/API 정합성 검증
+- 토너먼트/플레이어/뉴스 데이터의 원천 값 비교
+- 로그인, 결제, 온라인 플레이 기능 검증
+
+유지보수 포인트:
+
+- public site의 접근성 role/name이 바뀔 수 있어 role 기반 selector를 우선 사용하되, 필요 시 `a[href*="..."]` 및 `filter({ hasText })` 기반 selector를 함께 사용합니다.
+- News와 Schedule은 live content가 계속 바뀌므로 fixed title 검증 대신 list에서 읽은 제목/이벤트명을 detail에서 다시 확인합니다.
+- Player Search 결과가 동적 검색으로 즉시 필터링되지 않을 수 있어 `Phil Hellmuth` link 우선, 현재 노출된 첫 player link fallback 순서로 검증합니다.
 
 ## 검증 범위에서 제외한 것
 

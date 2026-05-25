@@ -9,9 +9,16 @@
     "test:smoke:ui": "playwright test tests/smoke --project=chromium-desktop --ui",
     "test:smoke:mobile": "playwright test tests/smoke --project=mobile-chrome",
     "test:smoke:all": "playwright test tests/smoke",
-    "report": "playwright show-report",
-    "report:smoke:ko": "start automation\\output\\wsop-public-smoke-latest-report-ko.html",
-    "report:smoke:en": "start automation\\output\\wsop-public-smoke-latest-report.html"
+    "phase:list": "node scripts/run-phase.cjs list",
+    "test:phase1": "node scripts/run-phase.cjs phase1",
+    "test:functional": "node scripts/run-phase.cjs phase2",
+    "test:phase2": "node scripts/run-phase.cjs phase2",
+    "report": "node scripts/open-latest-smoke-report.cjs smoke playwright",
+    "report:smoke:ko": "node scripts/open-latest-smoke-report.cjs smoke ko",
+    "report:smoke:en": "node scripts/open-latest-smoke-report.cjs smoke en",
+    "report:functional:ko": "node scripts/open-latest-smoke-report.cjs functional ko",
+    "report:functional:en": "node scripts/open-latest-smoke-report.cjs functional en",
+    "report:functional": "node scripts/open-latest-smoke-report.cjs functional playwright"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
