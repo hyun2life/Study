@@ -1,5 +1,4 @@
 @echo off
 cd /d "%~dp0"
-echo Starting WSOP Automation Web Server Dashboard...
-node scripts/web-runner-server.js
-pause
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 'node' -ArgumentList 'scripts\web-runner-server.js' -WindowStyle Hidden"
+exit
