@@ -156,11 +156,20 @@ npm run report:functional
 
 ## 설정
 
-### 1. 테스트 대상 URL 변경
-기본 대상 URL은 `https://www.wsop.com` 입니다. 다른 환경(Staging, QA 등)을 테스트하려면 `BASE_URL` 환경변수를 사용합니다.
+### 1. 테스트 대상 URL 변경 (Live / Stage / Custom)
+
+기본 테스트 대상 URL은 `https://www.wsop.com` (Live) 입니다. 
+
+#### A. 통합 웹 대시보드 및 GUI 러너에서 스위칭 (권장)
+- **웹 대시보드**: 우측 **`Execution Settings`** 패널의 **`Target Environment`** 드롭다운에서 `Live`, `Stage`, `Custom`을 선택할 수 있으며, 선택 즉시 환경변수가 동적으로 적용됩니다.
+- **Forms GUI 러너**: 상단의 **`Target Environment`** 드롭다운에서 선택할 수 있으며, Custom URL의 경우 직접 텍스트박스에 타이핑하여 주입할 수 있습니다.
+
+#### B. CLI 환경변수 수동 설정
+CLI에서 특정 환경을 직접 테스트하려면 `BASE_URL` 환경변수를 설정하고 실행합니다.
 
 ```bat
-set BASE_URL=https://www.wsop.com
+:: Stage 환경 테스트 시
+set BASE_URL=https://wsop-stage.ggnweb.com
 npm run test:smoke
 ```
 
@@ -293,6 +302,7 @@ Run.bat
 
 `Run.bat`은 로컬 웹 서버를 구동시켜 브라우저에서 웹 대시보드를 띄웁니다. 대시보드는 `automation/phases.json`을 읽기 때문에 새로운 phase가 추가되면 자동으로 사이드바 목록에 실시간 연동됩니다. 웹 대시보드에서 할 수 있는 작업은 다음과 같습니다.
 
+- **대상 환경 실시간 스위칭**: `Target Environment` 선택 드롭다운을 통해 별도의 콘솔 타이핑이나 환경변수 수동 세팅 없이, 마우스 클릭만으로 `Live (https://www.wsop.com)` / `Stage (https://wsop-stage.ggnweb.com)` / `Custom URL` 환경을 즉각 오버라이딩하여 테스트 및 크롤러 구동 가능
 - **페이즈 카드 선택 및 실행**: 좌측 카드 목록에서 대상을 원클릭으로 선택 및 실행
 - **실행 옵션 및 모드 튜닝**: Normal / Headed / UI 모드 선택 및 체크박스 기반 추가 매개변수(Limit, Concurrency, Grep, Timeout 등) 실시간 토글링 및 텍스트박스 입력
 - **실시간 터미널 로그 스트리밍**: SSE 채널을 활용해 백그라운드 테스트 실행 콘솔 로그를 컬러풀하게 스트리밍 및 자동 스크롤
