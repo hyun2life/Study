@@ -2,11 +2,13 @@
 
 WSOP Player Standings 데이터를 크롤링하고 JSON, CSV, HTML 리포트를 생성하는 자동화 도구입니다.
 
-이 프로젝트는 장기적으로 `WSOP Full Site QA Automation`으로 확장하기 위한 1단계 구현입니다. 현재 범위는 Player Standings와 Player Profile, Result 상세 페이지의 데이터 정합성 검증입니다.
+이 프로젝트는 `WSOP-Web` 작업 공간의 Player Standings 크롤러입니다. 현재 범위는 Player Standings와 Player Profile, Result 상세 페이지의 데이터 정합성 검증입니다.
 
-전체 자동화 구조는 상위 작업 공간 [`../WSOP-Full-Site-QA-Automation/`](../WSOP-Full-Site-QA-Automation/)에서 관리합니다. 이 폴더는 그 안의 `player-standings-data-integrity` 모듈 구현체로 봅니다.
+전체 자동화 구조는 상위 작업 공간 [`../`](../)에서 관리합니다. Web smoke/functional 검증은 sibling 프로젝트 [`../WSOP-Web-Automation/`](../WSOP-Web-Automation/)에서 관리합니다.
 
 ## 팀원 실행 방법
+
+일반 실행은 상위 `WSOP-Web\Run.bat` 대시보드에서 `crawler` 단계를 선택하는 방식을 권장합니다. 크롤러만 단독으로 돌리거나 BAT 상단 설정값을 직접 조정해야 할 때는 이 폴더의 `RUN_WSOP_PLAYER_CRAWLER_LIVE.bat`을 실행합니다.
 
 라이브 `wsop.com` 테스트:
 
@@ -132,7 +134,7 @@ set "CONCURRENCY=3"
 PowerShell이 임시 경로 문제 등으로 실행되지 않을 때는 명령 프롬프트(cmd)에서 아래처럼 실행합니다.
 
 ```cmd
-cd /d D:\Work\Study\WSOP-Player-Standings-Crawler-Improved
+cd /d D:\Work\Study\WSOP-Web\WSOP-Player-Standings-Crawler
 node automation\crawl_player_standings.mjs --player-url https://www.wsop.com/players/선수정보URL/ --result-limit 0 --result-page-limit 0 --max-load-more 50
 ```
 

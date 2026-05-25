@@ -13,7 +13,11 @@ daughter-emoticons/__pycache__/
 daughter-emoticons/output/**/*.png
 daughter-emoticons/reference_style.png
 
-WSOP-Player-Standings-Crawler-Improved/node_modules/
-WSOP-Player-Standings-Crawler-Improved/automation/.auth/
-WSOP-Player-Standings-Crawler-Improved/automation/output/
+WSOP-Web/**/node_modules/
+WSOP-Web/**/test-results/
+WSOP-Web/**/playwright-report/
+WSOP-Web/**/blob-report/
+WSOP-Web/**/automation/.auth/
+WSOP-Web/**/automation/output/
+WSOP-Web/**/.tmp-playwright/
 

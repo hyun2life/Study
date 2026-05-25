@@ -286,7 +286,7 @@ function getLatestReportPath(suite, mode) {
   let prefix;
 
   if (normalized === 'crawler') {
-    outputDir = path.resolve(PROJECT_ROOT, '..', 'WSOP-Player-Standings-Crawler-Improved', 'automation', 'output');
+    outputDir = path.resolve(PROJECT_ROOT, '..', 'WSOP-Player-Standings-Crawler', 'automation', 'output');
     prefix = 'wsop-player-crawler-live';
   } else {
     outputDir = path.join(PROJECT_ROOT, 'automation', 'output');

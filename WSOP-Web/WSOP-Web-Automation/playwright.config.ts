@@ -51,6 +51,10 @@ function inferReportSuite(argv: string[]): string {
     return 'functional';
   }
 
+  if (command.includes('tests/player-presentation')) {
+    return 'player-presentation';
+  }
+
   return 'smoke';
 }
 

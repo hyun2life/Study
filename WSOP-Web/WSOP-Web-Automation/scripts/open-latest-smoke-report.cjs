@@ -9,7 +9,7 @@ let outputDir;
 let prefix;
 
 if (suite === 'crawler') {
-  outputDir = path.resolve(process.cwd(), '..', 'WSOP-Player-Standings-Crawler-Improved', 'automation', 'output');
+  outputDir = path.resolve(process.cwd(), '..', 'WSOP-Player-Standings-Crawler', 'automation', 'output');
   prefix = 'wsop-player-crawler-live';
   if (mode === 'playwright') {
     fail('Crawler does not generate a Playwright Trace Report. Use KO/EN reports instead.');

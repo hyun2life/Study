@@ -86,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
       name: 'All Implemented Phases',
       reportSuite: 'all',
       testDir: 'All active test directories',
-      description: '실현 완료(Implemented) 처리된 모든 테스트 페이즈들을 순차적으로 실행합니다.',
+      description: 'ready 상태의 모든 단계를 순차적으로 실행합니다. 전체 점검이 필요할 때 사용합니다.',
       implemented: true
     };
 
@@ -193,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     sse.onerror = (err) => {
       console.error('SSE connection lost. Reconnecting...', err);
-      appendSystemLog('[SYSTEM] SSE Connection disconnected. Re-connecting in background...', 'text-muted');
+      appendSystemLog('SSE connection disconnected. Reconnecting in background...', 'text-muted');
     };
   }
 

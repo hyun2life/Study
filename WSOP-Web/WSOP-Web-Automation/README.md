@@ -1,8 +1,8 @@
 # WSOP Web Automation
 
-`wsop.com` 공개 웹사이트의 1차 smoke test 자동화 프로젝트입니다.
+`wsop.com` 공개 웹사이트의 smoke, functional flow, player presentation UI 자동화 프로젝트입니다.
 
-목표는 깊은 기능 검증이 아니라, 배포 후 주요 공개 페이지가 정상적으로 열리는지, 핵심 영역이 보이는지, 상단 네비게이션이 노출/이동 가능한지, 치명적인 콘솔 에러와 깨진 내부 링크 샘플이 있는지 빠르게 확인하는 것입니다.
+목표는 단계별로 다릅니다. Phase 1은 배포 후 주요 공개 페이지가 정상적으로 열리는지 빠르게 확인하고, Phase 2는 사용자의 핵심 탐색 흐름을 검증하며, Phase 3은 플레이어가 공개 웹 화면에서 올바르게 식별되고 표현되는지 확인합니다.
 
 ## 주요 기능
 
@@ -14,27 +14,36 @@
 - wsop.com 내부 링크 샘플 상태 확인
 - Playwright 기본 HTML Report 생성
 - 별도 한글/영문 최종 smoke 리포트 생성
+- Phase 3 Player Presentation & Identity UI 검증
 - 실패 시 screenshot, trace, video 저장
 
 ## 폴더 구조
 
 ```text
-wsop-web-automation/
-  automation/
-    output/                         # custom smoke report output
-  data/
-    public-pages.ts                 # smoke 대상 공개 페이지 목록
-  scripts/
-    wsop-smoke-html-reporter.cjs    # 한글/영문 최종 리포트 reporter
-  tests/
-    smoke/
-      public-pages.spec.ts
-      navigation.spec.ts
-      console-error.spec.ts
-      links.spec.ts
-  playwright.config.ts
-  package.json
-  Run.bat
+WSOP-Web/
+  Run.bat                         # 통합 대시보드 실행
+  Setup.bat                       # 전체 의존성 설치
+  WSOP-Web-Automation/
+    automation/
+      output/                       # custom smoke report output
+    data/
+      public-pages.ts               # smoke 대상 공개 페이지 목록
+    scripts/
+      wsop-smoke-html-reporter.cjs  # 한글/영문 최종 리포트 reporter
+    tests/
+      smoke/
+        public-pages.spec.ts
+        navigation.spec.ts
+        console-error.spec.ts
+        links.spec.ts
+      functional/
+      player-presentation/
+    fixtures/
+      player-presentation/
+    utils/
+      playerPresentation/
+    playwright.config.ts
+    package.json
 ```
 
 ## 배포 및 초기 설치 (팀원 배포 시)
@@ -47,21 +56,23 @@ wsop-web-automation/
 * 각 팀원의 PC에 **Node.js (LTS 버전)**가 설치되어 있어야 합니다. (다운로드: [https://nodejs.org/](https://nodejs.org/))
 
 ### 2. 폴더 배치 요건 (크롤러 연동 필수)
-크롤러 테스트 구동 및 리포트 팝업 연동이 정상 작동하려면 아래와 같이 **두 프로젝트 폴더가 동일한 상위 디렉토리 아래에 형제(Sibling)로 나란히 배치**되어야 합니다.
+크롤러 테스트 구동 및 리포트 팝업 연동이 정상 작동하려면 아래와 같이 `WSOP-Web` 상위 폴더 아래에 두 하위 프로젝트가 형제(Sibling)로 나란히 배치되어야 합니다.
 ```text
-상위 폴더/
+WSOP-Web/
+  ├─ Run.bat
+  ├─ Setup.bat
   ├─ WSOP-Web-Automation/ (본 프로젝트)
-  └─ WSOP-Player-Standings-Crawler-Improved/ (크롤러 프로젝트)
+  └─ WSOP-Player-Standings-Crawler/ (크롤러 프로젝트)
 ```
 
 ### 3. 원클릭 초기 셋업 (Setup.bat)
-`WSOP-Web-Automation` 폴더 내에 있는 **`Setup.bat`** 파일을 실행합니다. 스크립트가 로컬 Node.js 유무를 검사한 후, 테스트에 필요한 npm 의존성 라이브러리 설치와 Playwright 브라우저 바이너리 설치를 원클릭으로 자동 완료해 줍니다.
+상위 `WSOP-Web` 폴더에 있는 **`Setup.bat`** 파일을 실행합니다. 스크립트가 로컬 Node.js/npm 유무를 검사한 후, Web Automation과 Player Standings Crawler의 npm 의존성 및 Playwright Chromium을 함께 설치합니다.
 
 ## 실행 방법
 
 ### Windows BAT (통합 웹 대시보드 실행 및 종료)
 
-- **대시보드 실행 (`Run.bat`)**: 더블클릭하면 백그라운드(콘솔 창 숨김 모드)에서 웹 서버가 기동되며, 브라우저 새 탭에서 **Web UI 테스팅 대시보드**가 자동으로 열립니다. 실행 즉시 원래의 검은색 cmd 창은 스스로 자동 종료되어 화면에 불필요한 콘솔 잔재 창이 남지 않습니다.
+- **대시보드 실행 (`..\Run.bat`)**: 상위 `WSOP-Web` 폴더의 `Run.bat`을 더블클릭하면 백그라운드(콘솔 창 숨김 모드)에서 웹 서버가 기동되며, 브라우저 새 탭에서 **Web UI 테스팅 대시보드**가 자동으로 열립니다.
 - **대시보드 종료**: 대시보드 웹 화면 좌측 사이드바 하단에 있는 **`Shutdown Dashboard`** 버튼을 클릭하면, 실행 중인 백그라운드 서버 프로세스가 스스로 안전하게 종료되고 연결을 해제합니다.
 
 ### npm scripts
@@ -72,6 +83,9 @@ npm run test:smoke:headed
 npm run test:smoke:ui
 npm run test:smoke:mobile
 npm run test:smoke:all
+npm run test:functional
+npm run test:player-presentation
+npm run test:phase3
 ```
 
 ## 리포트
@@ -105,10 +119,14 @@ automation/output/wsop-public-functional-*-report-ko.html
 automation/output/wsop-public-functional-*-report.html
 automation/output/wsop-public-functional-*-report.json
 automation/output/wsop-public-functional-*-playwright-report/index.html
+automation/output/wsop-public-player-presentation-*-report-ko.html
+automation/output/wsop-public-player-presentation-*-report.html
+automation/output/wsop-public-player-presentation-*-report.json
+automation/output/wsop-public-player-presentation-*-playwright-report/index.html
 test-results/
 ```
 
-Smoke 리포트는 `WSOP-Player-Standings-Crawler-Improved`와 동일하게 실행 timestamp가 포함된 파일명으로 누적 저장합니다. 예:
+Smoke 리포트는 `WSOP-Player-Standings-Crawler`와 동일하게 실행 timestamp가 포함된 파일명으로 누적 저장합니다. 예:
 
 ```text
 automation/output/wsop-public-smoke-20260525-015233-report.json
@@ -167,8 +185,11 @@ CLI에서 특정 환경을 직접 테스트하려면 `BASE_URL` 환경변수를 
 ```bat
 :: Stage 환경 테스트 시
 set BASE_URL=https://wsop-stage.ggnweb.com
+set ENVIRONMENT=stage
 npm run test:smoke
 ```
+
+`ENVIRONMENT`는 Phase 3에서 avatar/image 미노출을 hard fail로 볼지 warning으로 볼지 판단할 때 사용합니다. 값은 `production` 또는 `stage`를 사용하며, 지정하지 않으면 `production`으로 간주합니다.
 
 ### 2. 웹 대시보드 서버 환경설정 (원격 / 회사 서버 배포 시)
 본 웹 테스팅 대시보드는 로컬뿐 아니라 **회사 공용 서버나 원격 VM**에서도 구동할 수 있도록 설계되었습니다. 아래의 환경 변수들을 통해 배포 환경에 맞춰 설정을 제어할 수 있습니다.
@@ -212,6 +233,41 @@ automation/output/
 
 2차 자동화는 단순 접근 smoke를 넘어 public web 사용자가 실제로 정보를 탐색하는 핵심 흐름을 검증합니다.
 
+## Phase 3 player presentation tests
+
+3차 자동화는 Data/API Integrity가 아니라, WSOP.com 공개 웹 화면에서 플레이어가 올바르게 식별되고 표현되는지 확인합니다.
+
+검증 범위:
+
+- Player Standings 상위 플레이어 노출 및 profile 연결
+- Player Search에서 주요 플레이어 이름 입력 시 자동완성/미리보기와 검색 결과에 해당 인물이 노출되는지 확인
+- Player Profile의 이름, 국가/국기, avatar/profile image 후보 확인
+- Hall of Fame, Player of the Year, 내부 Legend 그룹의 주요 플레이어 표현 확인
+- stage 환경의 avatar/image 미노출, optional badge/mark 미노출은 warning으로 수집
+
+의도적으로 제외한 항목:
+
+- earnings, bracelets, rings, cashes 등 수치 정확성
+- API 응답과 UI 값 비교
+- DB 조회
+- 전체 플레이어 전수 크롤링
+- visual snapshot baseline 비교
+
+실행 명령:
+
+```bat
+npm run test:player-presentation
+npm run test:phase3
+```
+
+주요 파일:
+
+```text
+tests/player-presentation/
+fixtures/player-presentation/
+utils/playerPresentation/
+```
+
 ## Phase registry
 
 장기 자동화 단계는 [automation/phases.json](./automation/phases.json)에서 중앙 관리합니다. 새 단계가 추가될 때는 먼저 이 파일에 phase id, report suite, test folder, Playwright project, 구현 여부를 등록합니다.
@@ -221,12 +277,13 @@ automation/output/
 ```text
 phase1  smoke                  tests/smoke
 phase2  functional             tests/functional
-phase3  data-integrity         tests/data-integrity          planned
+phase3  player-presentation    tests/player-presentation
 phase4  search-filter-sort     tests/search-filter-sort      planned
 phase5  result-detail          tests/result-detail           planned
-phase6  performance-stability  tests/performance-stability   planned
-phase7  visual-regression      tests/visual-regression       planned
-phase8  regression             tests/regression              planned
+phase6  data-integrity         tests/data-integrity          planned
+phase7  performance-stability  tests/performance-stability   planned
+phase8  visual-regression      tests/visual-regression       planned
+phase9  regression             tests/regression              planned
 ```
 
 공통 실행기:
@@ -235,9 +292,10 @@ phase8  regression             tests/regression              planned
 npm run phase:list
 npm run test:phase1
 npm run test:phase2
+npm run test:phase3
 ```
 
-또는 통합 GUI 실행기(`Run.bat`)를 통해 각 Phase를 선택해 실행할 수 있습니다.
+또는 상위 통합 GUI 실행기(`..\Run.bat`)를 통해 각 Phase를 선택해 실행할 수 있습니다.
 
 추가 Playwright 옵션은 `--` 뒤에 전달합니다.
 
@@ -250,6 +308,7 @@ npm run test:phase2 -- --headed
 ```text
 automation/output/wsop-public-smoke-YYYYMMDD-HHMMSS-...
 automation/output/wsop-public-functional-YYYYMMDD-HHMMSS-...
+automation/output/wsop-public-player-presentation-YYYYMMDD-HHMMSS-...
 automation/output/wsop-public-data-integrity-YYYYMMDD-HHMMSS-...
 ```
 
@@ -294,10 +353,11 @@ playwright test tests/functional --project=chromium-desktop
 Windows BAT (통합 웹 대시보드):
 
 ```bat
+cd ..
 Run.bat
 ```
 
-`Run.bat`은 로컬 웹 서버를 구동시켜 브라우저에서 웹 대시보드를 띄웁니다. 대시보드는 `automation/phases.json`을 읽기 때문에 새로운 phase가 추가되면 자동으로 사이드바 목록에 실시간 연동됩니다. 웹 대시보드에서 할 수 있는 작업은 다음과 같습니다.
+상위 `Run.bat`은 이 프로젝트의 로컬 웹 서버를 구동시켜 브라우저에서 웹 대시보드를 띄웁니다. 대시보드는 `automation/phases.json`을 읽기 때문에 새로운 phase가 추가되면 자동으로 사이드바 목록에 연동됩니다. 웹 대시보드에서 할 수 있는 작업은 다음과 같습니다.
 
 - **대상 환경 실시간 스위칭**: `Target Environment` 선택 드롭다운을 통해 별도의 콘솔 타이핑이나 환경변수 수동 세팅 없이, 마우스 클릭만으로 `Live (https://www.wsop.com)` / `Stage (https://wsop-stage.ggnweb.com)` / `Custom URL` 환경을 즉각 오버라이딩하여 테스트 및 크롤러 구동 가능
 - **페이즈 카드 선택 및 실행**: 좌측 카드 목록에서 대상을 원클릭으로 선택 및 실행
@@ -317,6 +377,7 @@ Run.bat
 - public site의 접근성 role/name이 바뀔 수 있어 role 기반 selector를 우선 사용하되, 필요 시 `a[href*="..."]` 및 `filter({ hasText })` 기반 selector를 함께 사용합니다.
 - News와 Schedule은 live content가 계속 바뀌므로 fixed title 검증 대신 list에서 읽은 제목/이벤트명을 detail에서 다시 확인합니다.
 - Player Search 결과가 동적 검색으로 즉시 필터링되지 않을 수 있어 `Phil Hellmuth` link 우선, 현재 노출된 첫 player link fallback 순서로 검증합니다.
+- Phase 3의 Player Search identity 검증은 이름 입력 후 자동완성/검색 결과에 해당 인물이 보이지 않거나 프로필 접근 경로를 전혀 찾지 못하면 hard fail로 처리합니다. 동일 이름이 여러 profile target으로 보이는 경우는 현재 Phase 3에서는 warning으로 남기고, 수치/DB/API 정합성은 Phase 6에서 다룹니다.
 
 ## 검증 범위에서 제외한 것
 

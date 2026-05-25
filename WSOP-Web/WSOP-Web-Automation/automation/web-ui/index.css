@@ -2,30 +2,29 @@
    Design Tokens & Color Palette
    ========================================================================== */
 :root {
-  /* HSL Tailored Dark Theme Color Palette */
-  --bg-app: hsl(222, 47%, 7%);           /* #060913 Deep Cosmic Navy */
-  --bg-sidebar: hsl(222, 45%, 4%);       /* #020409 Darker space */
-  --bg-card: rgba(17, 24, 39, 0.6);      /* Glassmorphism semi-transparent */
-  --bg-input: hsl(222, 47%, 3%);         /* Deep terminal black */
-  --border-color: rgba(255, 255, 255, 0.07);
-  --border-focus: rgba(99, 102, 241, 0.4);
+  --bg-app: #0d1117;
+  --bg-sidebar: #090c10;
+  --bg-card: #151b23;
+  --bg-input: #080b0f;
+  --border-color: #30363d;
+  --border-focus: rgba(214, 31, 44, 0.4);
 
   /* Accent Colors */
-  --accent-purple: hsl(245, 82%, 67%);   /* Neon purple accent */
-  --accent-purple-glow: rgba(99, 102, 241, 0.25);
+  --accent-purple: #d61f2c;
+  --accent-purple-glow: rgba(214, 31, 44, 0.22);
   
-  --accent-green: hsl(150, 84%, 53%);    /* Emerald green */
+  --accent-green: #2ea043;
   --accent-green-glow: rgba(16, 185, 129, 0.2);
 
-  --accent-blue: hsl(217, 91%, 60%);     /* Electric blue */
+  --accent-blue: #58a6ff;
   
-  --accent-red: hsl(350, 89%, 60%);      /* Vivid red */
+  --accent-red: #f85149;
   --accent-red-glow: rgba(239, 68, 68, 0.25);
 
   /* Text Colors */
-  --text-primary: hsl(210, 40%, 96%);    /* Almost white */
-  --text-muted: hsl(215, 16%, 65%);      /* Grayish blue */
-  --text-dimmed: hsl(215, 13%, 45%);     /* Darker gray */
+  --text-primary: #f0f6fc;
+  --text-muted: #8b949e;
+  --text-dimmed: #6e7681;
 
   /* Fonts */
   --font-primary: 'Outfit', sans-serif;
@@ -33,7 +32,7 @@
 
   /* Dimensions */
   --sidebar-width: 280px;
-  --card-radius: 12px;
+  --card-radius: 8px;
   --button-radius: 8px;
 }
 
@@ -104,7 +103,8 @@ body {
   left: -10px;
   width: 80px;
   height: 80px;
-  background: radial-gradient(circle, var(--accent-purple-glow) 0%, transparent 70%);
+  background: linear-gradient(135deg, rgba(214, 31, 44, 0.22), rgba(247, 201, 72, 0.08));
+  border-radius: 8px;
   z-index: -1;
 }
 
@@ -112,7 +112,7 @@ body {
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #ffffff 30%, var(--accent-purple) 100%);
+  background: linear-gradient(135deg, #ffffff 35%, #f7c948 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 2px;
@@ -170,7 +170,7 @@ body {
 }
 
 .phase-card.active {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(99, 102, 241, 0.02) 100%);
+  background: linear-gradient(135deg, rgba(214, 31, 44, 0.12) 0%, rgba(247, 201, 72, 0.04) 100%);
   border-color: var(--accent-purple);
   box-shadow: 0 0 16px var(--accent-purple-glow);
 }

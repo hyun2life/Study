@@ -2990,59 +2990,38 @@ function renderDashboardTemplate(report, isKo) {
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
-      --bg-main: #0b0f19;
-      --bg-card: rgba(21, 29, 48, 0.7);
-      --bg-card-hover: rgba(26, 36, 60, 0.85);
-      --bg-input: #1f293d;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --border: rgba(255, 255, 255, 0.08);
-      --primary: #8b5cf6;
-      --primary-rgb: 139, 92, 246;
-      --primary-hover: #a78bfa;
-      --success: #10b981;
-      --success-bg: rgba(16, 185, 129, 0.15);
-      --danger: #ef4444;
-      --danger-bg: rgba(239, 68, 68, 0.15);
-      --warning: #f59e0b;
-      --warning-bg: rgba(245, 158, 11, 0.15);
-      --shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-      --card-border: 1px solid rgba(255, 255, 255, 0.05);
-      --glass-blur: blur(16px);
+      --bg-main: #0d1117;
+      --bg-card: #151b23;
+      --bg-card-hover: #1f2733;
+      --bg-input: #080b0f;
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+      --border: #30363d;
+      --primary: #d61f2c;
+      --primary-rgb: 214, 31, 44;
+      --primary-hover: #f7c948;
+      --success: #2ea043;
+      --success-bg: rgba(46, 160, 67, 0.14);
+      --danger: #f85149;
+      --danger-bg: rgba(248, 81, 73, 0.14);
+      --warning: #d29922;
+      --warning-bg: rgba(210, 153, 34, 0.14);
+      --shadow: 0 18px 45px rgba(0, 0, 0, 0.24);
+      --card-border: 1px solid #30363d;
+      --glass-blur: none;
     }
-    body.light-mode {
-      --bg-main: #f3f4f6;
-      --bg-card: rgba(255, 255, 255, 0.8);
-      --bg-card-hover: rgba(255, 255, 255, 0.95);
-      --bg-input: #ffffff;
-      --text-main: #111827;
-      --text-muted: #4b5563;
-      --border: rgba(0, 0, 0, 0.08);
-      --primary: #6d28d9;
-      --primary-rgb: 109, 40, 217;
-      --primary-hover: #5b21b6;
-      --success: #059669;
-      --success-bg: #ecfdf5;
-      --danger: #dc2626;
-      --danger-bg: #fef2f2;
-      --warning: #d97706;
-      --warning-bg: #fffbeb;
-      --shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.08);
-      --card-border: 1px solid rgba(0, 0, 0, 0.06);
-    }
-
     * { box-sizing: border-box; transition: background-color 0.2s, color 0.2s, border-color 0.2s, transform 0.2s; }
     body { margin: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-main); color: var(--text-main); line-height: 1.5; padding-bottom: 60px; }
 
-    header { background: var(--bg-card); backdrop-filter: var(--glass-blur); padding: 30px 40px; position: relative; overflow: hidden; border-bottom: var(--card-border); box-shadow: var(--shadow); }
-    header::after { content: ''; position: absolute; width: 400px; height: 400px; background: radial-gradient(circle, rgba(var(--primary-rgb), 0.15) 0%, transparent 70%); right: -100px; top: -100px; pointer-events: none; }
+    header { background: linear-gradient(135deg, #080a0f 0%, #171b24 58%, #2b1016 100%); padding: 30px 40px; position: relative; overflow: hidden; border-bottom: var(--card-border); box-shadow: var(--shadow); }
+    header::after { content: ''; position: absolute; inset: auto 0 0 0; height: 3px; background: linear-gradient(90deg, var(--primary), #f7c948); pointer-events: none; }
 
     .header-content { max-width: 1600px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 30px; flex-wrap: wrap; }
-    .header-title h1 { margin: 0; font-family: 'Outfit', sans-serif; font-size: 32px; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, var(--text-main) 30%, var(--primary) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .header-title h1 { margin: 0; font-family: 'Outfit', sans-serif; font-size: 32px; font-weight: 800; letter-spacing: 0; color: var(--text-main); }
     .header-title p { margin: 8px 0 0; color: var(--text-muted); font-size: 14px; }
     .header-actions { display: flex; align-items: center; gap: 15px; }
 
-    .btn { background: var(--bg-card); border: var(--card-border); color: var(--text-main); padding: 10px 20px; border-radius: 9999px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; box-shadow: var(--shadow); text-decoration: none; }
+    .btn { background: var(--bg-card); border: var(--card-border); color: var(--text-main); padding: 10px 20px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; box-shadow: var(--shadow); text-decoration: none; }
     .btn:hover { border-color: var(--primary); transform: translateY(-1px); }
     .btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
     .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
@@ -3050,8 +3029,8 @@ function renderDashboardTemplate(report, isKo) {
     main { max-width: 1600px; margin: 30px auto; padding: 0 30px; }
 
     .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 45px; }
-    .kpi-card { background: var(--bg-card); backdrop-filter: var(--glass-blur); border-radius: 20px; padding: 25px; border: var(--card-border); box-shadow: var(--shadow); cursor: pointer; position: relative; overflow: hidden; }
-    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 15px 30px -10px rgba(0,0,0,0.3); border-color: var(--primary); }
+    .kpi-card { background: var(--bg-card); border-radius: 8px; padding: 25px; border: var(--card-border); box-shadow: var(--shadow); cursor: pointer; position: relative; overflow: hidden; }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 15px 30px -10px rgba(0,0,0,0.3); border-color: var(--primary); }
     .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--primary); opacity: 0; transition: opacity 0.2s; }
     .kpi-card:hover::before { opacity: 1; }
     .kpi-card .kpi-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
@@ -3067,7 +3046,7 @@ function renderDashboardTemplate(report, isKo) {
     @media (max-width: 1024px) {
       .visualizations-row { grid-template-columns: 1fr; }
     }
-    .chart-panel { background: var(--bg-card); backdrop-filter: var(--glass-blur); border-radius: 20px; border: var(--card-border); box-shadow: var(--shadow); padding: 25px; display: flex; flex-direction: column; }
+    .chart-panel { background: var(--bg-card); border-radius: 8px; border: var(--card-border); box-shadow: var(--shadow); padding: 25px; display: flex; flex-direction: column; }
     .chart-panel h3 { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; margin: 0 0 20px; color: var(--text-main); border-left: 4px solid var(--primary); padding-left: 10px; }
     .chart-wrapper { position: relative; flex: 1; min-height: 250px; display: flex; align-items: center; justify-content: center; }
 
@@ -3081,36 +3060,34 @@ function renderDashboardTemplate(report, isKo) {
     h2 { font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 700; margin: 40px 0 20px; display: flex; align-items: center; gap: 10px; }
     h2 svg { fill: var(--primary); width: 24px; height: 24px; }
 
-    .panel { background: var(--bg-card); backdrop-filter: var(--glass-blur); border-radius: 20px; border: var(--card-border); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 40px; }
+    .panel { background: var(--bg-card); border-radius: 8px; border: var(--card-border); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 40px; }
 
     .table-container { width: 100%; overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
     th { background: rgba(0, 0, 0, 0.2); color: var(--text-main); font-weight: 600; padding: 14px 18px; border-bottom: 1px solid var(--border); font-family: 'Outfit', sans-serif; }
-    body.light-mode th { background: rgba(0, 0, 0, 0.03); }
     td { padding: 14px 18px; border-bottom: 1px solid var(--border); color: var(--text-main); vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background-color: rgba(255, 255, 255, 0.015); }
-    body.light-mode tr:hover td { background-color: rgba(0, 0, 0, 0.005); }
 
     .clickable-row { cursor: pointer; }
     .clickable-row:hover { background-color: rgba(var(--primary-rgb), 0.05) !important; }
 
     .search-filter-bar { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }
     .search-box { position: relative; flex: 1; min-width: 300px; }
-    .search-box input { width: 100%; background: var(--bg-card); border: var(--card-border); color: var(--text-main); padding: 12px 20px 12px 45px; border-radius: 99px; font-size: 14px; box-shadow: var(--shadow); outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
+    .search-box input { width: 100%; background: var(--bg-card); border: var(--card-border); color: var(--text-main); padding: 12px 20px 12px 45px; border-radius: 8px; font-size: 14px; box-shadow: var(--shadow); outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
     .search-box input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.2); }
     .search-box svg { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; fill: var(--text-muted); }
 
     .filter-controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
-    .filter-group { display: flex; gap: 6px; background: var(--bg-card); border: var(--card-border); padding: 4px; border-radius: 99px; box-shadow: var(--shadow); }
-    .filter-btn { background: transparent; border: none; color: var(--text-muted); padding: 8px 16px; border-radius: 99px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .filter-group { display: flex; gap: 6px; background: var(--bg-card); border: var(--card-border); padding: 4px; border-radius: 8px; box-shadow: var(--shadow); }
+    .filter-btn { background: transparent; border: none; color: var(--text-muted); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
     .filter-btn:hover { color: var(--text-main); }
     .filter-btn.active { background: var(--primary); color: white; }
 
-    .select-dropdown { background: var(--bg-card); border: var(--card-border); color: var(--text-main); padding: 10px 20px; border-radius: 99px; outline: none; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: var(--shadow); }
+    .select-dropdown { background: var(--bg-card); border: var(--card-border); color: var(--text-main); padding: 10px 20px; border-radius: 8px; outline: none; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: var(--shadow); }
     .select-dropdown:focus { border-color: var(--primary); }
 
-    .player-card { background: var(--bg-card); border-radius: 20px; border: var(--card-border); box-shadow: var(--shadow); margin-bottom: 20px; overflow: hidden; position: relative; }
+    .player-card { background: var(--bg-card); border-radius: 8px; border: var(--card-border); box-shadow: var(--shadow); margin-bottom: 20px; overflow: hidden; position: relative; }
     .player-card.pulse-glow { animation: pulseGlow 1.5s ease-in-out infinite alternate; border-color: var(--primary); }
     @keyframes pulseGlow {
       0% { box-shadow: 0 0 10px rgba(var(--primary-rgb), 0.1), var(--shadow); }
@@ -3119,7 +3096,6 @@ function renderDashboardTemplate(report, isKo) {
 
     .player-header { padding: 22px 28px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
     .player-header:hover { background-color: rgba(255,255,255,0.01); }
-    body.light-mode .player-header:hover { background-color: rgba(0,0,0,0.01); }
 
     .player-info-left { display: flex; align-items: center; gap: 15px; }
     .player-info-left h3 { margin: 0; font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; }
@@ -3140,7 +3116,7 @@ function renderDashboardTemplate(report, isKo) {
       .grid-2col { grid-template-columns: 1fr; }
     }
 
-    .defects-summary-box { background: var(--danger-bg); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 14px; padding: 18px; margin-bottom: 25px; color: var(--text-main); }
+    .defects-summary-box { background: var(--danger-bg); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 8px; padding: 18px; margin-bottom: 25px; color: var(--text-main); }
     .defects-summary-box h4 { margin: 0 0 10px; font-weight: 700; font-family: 'Outfit', sans-serif; display: flex; align-items: center; gap: 8px; }
     .defects-summary-box ul { margin: 0; padding-left: 20px; font-size: 13px; }
 
@@ -3170,11 +3146,9 @@ function renderDashboardTemplate(report, isKo) {
     .mini-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* Collapsible Group Styles */
-    .group-card { background: var(--bg-card); border-radius: 20px; border: var(--card-border); box-shadow: var(--shadow); margin-bottom: 20px; overflow: hidden; }
+    .group-card { background: var(--bg-card); border-radius: 8px; border: var(--card-border); box-shadow: var(--shadow); margin-bottom: 20px; overflow: hidden; }
     .group-header { padding: 18px 24px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.15); transition: background-color 0.2s; }
-    body.light-mode .group-header { background: rgba(0, 0, 0, 0.02); }
     .group-header:hover { background-color: rgba(255, 255, 255, 0.02); }
-    body.light-mode .group-header:hover { background-color: rgba(0, 0, 0, 0.04); }
     .group-header-left { display: flex; align-items: center; gap: 15px; }
     .item-count-badge { background: var(--bg-input); border: var(--card-border); color: var(--text-muted); font-size: 11px; padding: 3px 10px; border-radius: 99px; font-weight: 700; }
     .group-arrow-icon { width: 20px; height: 20px; fill: var(--text-muted); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -3183,19 +3157,14 @@ function renderDashboardTemplate(report, isKo) {
     .group-body-inner { overflow: hidden; }
   </style>
 </head>
-<body class="dark-mode">
+<body>
   <header>
     <div class="header-content">
       <div class="header-title">
         <h1>${escapeHtml(t.title)}</h1>
         <p>${escapeHtml(t.generated)}: ${escapeHtml(new Date().toLocaleString())} | ${escapeHtml(t.runStatus)}: <span class="status-badge ${summary.status}">${escapeHtml(isKo ? formatStatus(summary.status) : summary.status)}</span>${summary.interruptedReason ? ` (${escapeHtml(summary.interruptedReason)})` : ""} | ${escapeHtml(t.source)}: <a href="${escapeHtml(report.playersUrl || "")}">${escapeHtml(report.playersUrl || "")}</a></p>
       </div>
-      <div class="header-actions">
-        <button class="btn btn-primary" id="theme-toggle">
-          <svg style="width:16px;height:16px;" viewBox="0 0 24 24"><path fill="currentColor" d="M12,18C11.11,18 10.26,17.8 9.5,17.45C11.56,16.5 13,14.42 13,12C13,9.58 11.56,7.5 9.5,6.55C10.26,6.2 11.11,6 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18M20,8.69V4H15.31L12,0.69L8.69,4H4V8.69L0.69,12L4,15.31V20H8.69L12,23.31L15.31,20H20V15.31L23.31,12L20,8.69Z"/></svg>
-          Theme
-        </button>
-      </div>
+      <div class="header-actions"></div>
     </div>
   </header>
 
@@ -3248,7 +3217,7 @@ function renderDashboardTemplate(report, isKo) {
         <div class="chart-wrapper">
           <canvas id="defectsChart" style="display:none;"></canvas>
           <div id="defectsFallback" style="text-align:center;color:var(--text-muted);font-size:14px;padding:20px;">
-            ${defects.length ? `<span style="font-size:48px;">⚠️</span><br>${defects.length}개의 정합성 오류 항목 검출됨` : `🎉 데이터 무결성 검증 100% 완료`}
+            ${defects.length ? `${defects.length}개의 정합성 오류 항목이 검출되었습니다.` : `데이터 무결성 검증을 통과했습니다.`}
           </div>
         </div>
       </div>
@@ -3413,17 +3382,6 @@ function renderDashboardTemplate(report, isKo) {
     // Chart.js instance caches
     let statusChartInstance = null;
     let defectsChartInstance = null;
-
-    // Theme toggle
-    const themeBtn = document.getElementById('theme-toggle');
-    themeBtn.addEventListener('click', () => {
-      document.body.classList.toggle('light-mode');
-      localStorage.setItem('wsop-theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
-      initCharts();
-    });
-    if (localStorage.getItem('wsop-theme') === 'light') {
-      document.body.classList.add('light-mode');
-    }
 
     // Scroll to top button visibility
     const scrollTopBtn = document.getElementById('scroll-to-top');
@@ -3839,8 +3797,8 @@ function renderDashboardTemplate(report, isKo) {
               <div class="player-meta-info">
                 <span>🔗 <a href="\${escapeHtml(player.url)}" onclick="event.stopPropagation();" target="_blank">\${escapeHtml(player.url)}</a></span>
                 <span>🏆 Cashed Events: <strong>\${totalEvents}</strong></span>
-                <span>📊 Cashes (Profile): <strong>\${player.summary?.cashes ?? "-"}</strong></span>
-                <span>🔄 Load More: <strong>\${player.expansion?.loadMoreClicks ?? 0}</strong></span>
+                <span>Cashes (Profile): <strong>\${player.summary?.cashes ?? "-"}</strong></span>
+                <span>Load More: <strong>\${player.expansion?.loadMoreClicks ?? 0}</strong></span>
               </div>
             </div>
             <div class="player-header-right">
@@ -3852,10 +3810,10 @@ function renderDashboardTemplate(report, isKo) {
           <div class="accordion-content">
             <div class="accordion-inner">
               <div class="player-body-wrapper">
-                \${player.error ? \`<div class="defects-summary-box"><h4>⚠️ Crawl Error</h4><p>\${escapeHtml(player.error)}</p></div>\` : ""}
+                \${player.error ? \`<div class="defects-summary-box"><h4>Crawl Error</h4><p>\${escapeHtml(player.error)}</p></div>\` : ""}
                 \${hasWarning ? \`
                   <div class="defects-summary-box" style="background:var(--warning-bg);border-color:rgba(245,158,11,0.3);color:var(--text-main);">
-                    <h4>⚠️ Warnings</h4>
+                    <h4>Warnings</h4>
                     <ul>
                       \${player.warnings.map(w => \`<li>\${escapeHtml(localizeWarning(w))}</li>\`).join("")}
                     </ul>
@@ -4099,7 +4057,7 @@ function renderDashboardTemplate(report, isKo) {
                 style.getPropertyValue('--danger').trim() || '#ef4444'
               ],
               borderWidth: 2,
-              borderColor: document.body.classList.contains('light-mode') ? '#ffffff' : '#151d30'
+              borderColor: style.getPropertyValue('--bg-card').trim() || '#151b23'
             }]
           },
           options: {
@@ -4131,7 +4089,7 @@ function renderDashboardTemplate(report, isKo) {
         if (barData.length === 0) {
           ctx2.style.display = 'none';
           document.getElementById('defectsFallback').style.display = 'block';
-          document.getElementById('defectsFallback').innerHTML = \`🎉 <strong style="color:var(--success);">\${isKo ? "모든 검증을 완벽하게 통과했습니다." : "100% Integrity - No defects found."}</strong>\`;
+          document.getElementById('defectsFallback').innerHTML = \`<strong style="color:var(--success);">\${isKo ? "정합성 결함이 발견되지 않았습니다." : "No integrity defects found."}</strong>\`;
         } else {
           ctx2.style.display = 'block';
           document.getElementById('defectsFallback').style.display = 'none';
@@ -4143,8 +4101,8 @@ function renderDashboardTemplate(report, isKo) {
               datasets: [{
                 label: isKo ? '검출 건수' : 'Count',
                 data: barData,
-                backgroundColor: 'rgba(139, 92, 246, 0.7)',
-                borderColor: '#8b5cf6',
+                backgroundColor: 'rgba(214, 31, 44, 0.72)',
+                borderColor: '#d61f2c',
                 borderWidth: 1.5,
                 borderRadius: 6
               }]
@@ -4200,13 +4158,6 @@ function renderDashboardTemplate(report, isKo) {
       renderPlayerList();
       initCharts();
 
-      // 새로고침 시 화면 중간(차트 영역인 데이터 무결성 통과 및 카테고리 분포도)으로 자동 스크롤
-      setTimeout(() => {
-        const vizRow = document.querySelector('.visualizations-row');
-        if (vizRow) {
-          vizRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 500);
     });
   </script>
 </body>

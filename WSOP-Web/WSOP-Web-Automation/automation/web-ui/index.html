@@ -22,18 +22,18 @@
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-glow"></div>
-        <h1 id="brand-title">WSOP Runner</h1>
-        <p id="brand-subtitle">Automation Platform</p>
+        <h1 id="brand-title">WSOP Web</h1>
+        <p id="brand-subtitle">Automation Console</p>
       </div>
       <div class="sidebar-divider"></div>
-      <h2 class="section-title">Target Phase</h2>
+      <h2 class="section-title">검증 단계</h2>
       <div class="phase-list" id="phase-list-container">
         <!-- Dynamically rendered phase cards will appear here -->
         <div class="loading-spinner">페이즈 데이터 로딩 중...</div>
       </div>
       <!-- Shutdown Footer -->
       <div class="sidebar-footer" style="margin-top: auto; padding-top: 15px; border-top: 1px solid var(--border-color);">
-        <button id="btn-shutdown" class="btn btn-shutdown" style="width: 100%; background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.03) 100%); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--accent-red); font-size: 0.85rem; padding: 10px 0; border-radius: var(--button-radius); transition: all 0.2s; cursor: pointer;">Shutdown Dashboard</button>
+        <button id="btn-shutdown" class="btn btn-shutdown" style="width: 100%; background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.03) 100%); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--accent-red); font-size: 0.85rem; padding: 10px 0; border-radius: var(--button-radius); transition: all 0.2s; cursor: pointer;">대시보드 종료</button>
       </div>
     </aside>
 
@@ -45,7 +45,7 @@
 
         <!-- Left Column: Details Card -->
         <div class="card details-card">
-          <h2 class="card-title">Phase Details</h2>
+          <h2 class="card-title">단계 정보</h2>
           <div class="card-divider"></div>
           <div class="details-content">
             <div class="detail-item">
@@ -73,7 +73,7 @@
 
         <!-- Right Column: Settings Card -->
         <div class="card settings-card">
-          <h2 class="card-title">Execution Settings</h2>
+          <h2 class="card-title">실행 설정</h2>
           <div class="card-divider"></div>
 
           <div class="settings-form">
@@ -112,7 +112,7 @@
 
               <!-- A. Crawler Options (Only visible for crawler) -->
               <div id="crawler-options" class="options-panel hidden">
-                <span class="options-panel-title">Crawler Options (Overridable)</span>
+                <span class="options-panel-title">Crawler Options</span>
                 <div class="options-grid">
                   <div class="option-row">
                     <label class="custom-checkbox">
@@ -151,7 +151,7 @@
 
               <!-- B. Playwright Options (Visible for non-crawler, non-all) -->
               <div id="pw-options" class="options-panel hidden">
-                <span class="options-panel-title">Playwright Options (Overridable)</span>
+                <span class="options-panel-title">Playwright Options</span>
                 <div class="options-grid">
                   <div class="option-row">
                     <label class="custom-checkbox">
@@ -192,8 +192,8 @@
 
             <!-- Action Buttons Group -->
             <div class="action-buttons-group">
-              <button id="btn-run" class="btn btn-run" disabled>Run Selected Test</button>
-              <button id="btn-kill" class="btn btn-kill hidden">Stop Test</button>
+              <button id="btn-run" class="btn btn-run" disabled>선택 단계 실행</button>
+              <button id="btn-kill" class="btn btn-kill hidden">중지</button>
             </div>
 
             <!-- Utility Divider -->
@@ -218,7 +218,7 @@
       <section class="console-section">
         <div class="card console-card">
           <div class="console-header">
-            <h2 class="card-title" style="margin-bottom: 0;">Live Console Terminal</h2>
+            <h2 class="card-title" style="margin-bottom: 0;">실시간 실행 로그</h2>
             <div class="console-actions">
               <span class="status-indicator" id="status-indicator"><span class="status-dot"></span>Ready</span>
               <button id="btn-clear-log" class="btn-console">Clear</button>
@@ -226,8 +226,7 @@
             </div>
           </div>
           <div class="console-body" id="console-output">
-            <div class="console-line text-muted">[SYSTEM] Welcome to WSOP Automation Web-Runner. Select a phase card to
-              begin.</div>
+            <div class="console-line text-muted">[SYSTEM] WSOP Web Automation Console ready. Select a phase to begin.</div>
           </div>
         </div>
       </section>

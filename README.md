@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | `SNS_report/` | Discord/Facebook 커뮤니티 메시지를 수집하고 OpenAI 요약, HTML 리포트, 이메일 발송까지 처리하는 자동화 실험 | [`SNS_report/README.md`](SNS_report/README.md) |
 | `WSOP-Full-Site-QA-Automation/` | WSOP 전체 사이트 QA 자동화를 모듈 단위로 설계하는 상위 작업 공간 | [`WSOP-Full-Site-QA-Automation/README.md`](WSOP-Full-Site-QA-Automation/README.md) |
-| `WSOP-Player-Standings-Crawler-Improved/` | WSOP Player Standings, Player Profile, Result 상세 데이터 정합성 검증 크롤러 | [`WSOP-Player-Standings-Crawler-Improved/README.md`](WSOP-Player-Standings-Crawler-Improved/README.md) |
+| `WSOP-Web/` | WSOP 공개 웹 smoke/functional 자동화와 Player Standings 크롤러를 함께 관리하는 통합 작업 공간 | [`WSOP-Web/README.md`](WSOP-Web/README.md) |
 | `daughter-emoticons/` | OpenAI Images API를 이용한 카카오톡 정적 이모티콘 이미지 생성 실험 | [`daughter-emoticons/README.md`](daughter-emoticons/README.md) |
 | `ETC/` | 메인 프로젝트 바깥의 보조 프로젝트와 결과물 보관 공간 | [`ETC/README.md`](ETC/README.md) |
 | `PM/` | PM 업무 흐름, 우선순위 판단, 대시보드 시안 관련 문서와 HTML | [`PM/README.md`](PM/README.md) |
@@ -30,17 +30,24 @@ python discord_report.py
 
 실제 실행 전에는 `config.example.json`과 `.env.example`을 각각 `config.json`, `.env`로 복사하고 필요한 값을 채워야 합니다.
 
-### WSOP Player Standings 크롤러
+### WSOP Web
 
 ```powershell
-cd WSOP-Player-Standings-Crawler-Improved
+cd WSOP-Web
+.\Run.bat
+```
+
+Player Standings 크롤러만 실행하려면 아래 명령을 사용합니다.
+
+```powershell
+cd WSOP-Web\WSOP-Player-Standings-Crawler
 .\RUN_WSOP_PLAYER_CRAWLER_LIVE.bat
 ```
 
 로컬 로직만 빠르게 확인하려면 아래 self-test를 사용합니다.
 
 ```powershell
-cd WSOP-Player-Standings-Crawler-Improved
+cd WSOP-Web\WSOP-Player-Standings-Crawler
 npm.cmd run crawl:self-test
 ```
 

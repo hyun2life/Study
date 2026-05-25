@@ -150,7 +150,7 @@ function renderDashboard(report, isKo) {
     .status-pill.fail { color: var(--fail); background: rgba(248,81,73,.12); }
     main.wrap { padding-top: 24px; }
     .kpis { display:grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 14px; margin: 0 0 24px; }
-    .card, .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+    .card, .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); }
     .card { padding: 18px; min-height: 112px; }
     .label { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
     .value { margin-top: 10px; font-size: 32px; font-weight: 850; }
@@ -208,7 +208,7 @@ function renderDashboard(report, isKo) {
   <header>
     <div class="wrap hero">
       <div>
-        <div class="eyebrow">${escapeHtml(`WSOP PUBLIC WEB ${report.suite.toUpperCase()}`)}</div>
+        <div class="eyebrow">${escapeHtml(`WSOP WEB ${report.suite.toUpperCase()}`)}</div>
         <h1>${escapeHtml(t.title)}</h1>
         <p class="subtitle">${escapeHtml(t.subtitle)}</p>
       </div>
@@ -291,14 +291,14 @@ function renderDashboard(report, isKo) {
 
 function dictionary(isKo) {
   return isKo ? {
-    title: 'WSOP 공개 웹사이트 Smoke Test 최종 리포트',
-    subtitle: '배포 후 주요 공개 페이지, 핵심 영역, 상단 네비게이션, 콘솔 오류, 내부 링크 샘플을 빠르게 확인한 결과입니다.',
+    title: 'WSOP Web 자동화 리포트',
+    subtitle: '공개 페이지 접근, 핵심 콘텐츠, 상단 네비게이션, 콘솔 오류, 내부 링크 샘플을 빠르게 확인한 결과입니다.',
     total: '전체 테스트',
     passed: '통과',
     failed: '실패',
     skipped: '건너뜀',
     passRate: '통과율',
-    duration: '누적 실행 시간',
+    duration: '총 실행 시간',
     executionSummary: '실행 요약',
     baseUrl: '대상 사이트',
     projects: '브라우저 프로젝트',
@@ -310,12 +310,12 @@ function dictionary(isKo) {
     noCriticalFailuresBody: '현재 실행에서 실패 또는 타임아웃 테스트가 없습니다. 건너뜀 항목이 있다면 실제 사이트 메뉴 구조와 테스트 기준을 확인하세요.',
     failures: '실패 상세',
     skippedTests: '건너뜀 항목',
-    suiteDirectory: '검증 영역별 디렉토리',
+    suiteDirectory: '검증 영역별 목록',
     allTests: '전체 테스트 목록',
     artifacts: '산출물 및 환경',
     playwrightReport: 'Playwright 기본 HTML 리포트',
     platform: '실행 환경',
-    footer: '이 리포트는 Playwright 실행 결과로 자동 생성되었습니다. 링크 체크는 사이트 부하를 줄이기 위해 페이지당 제한된 개수만 검사합니다.',
+    footer: '이 리포트는 Playwright 실행 결과에서 자동 생성되었습니다. 링크 검증은 외부 사이트 부하를 줄이기 위해 페이지별 제한된 샘플만 확인합니다.',
     testName: '테스트명',
     suite: '검증 영역',
     project: '프로젝트',
@@ -325,8 +325,8 @@ function dictionary(isKo) {
     detail: '상세',
     attachment: '첨부',
   } : {
-    title: 'WSOP Public Website Smoke Test Final Report',
-    subtitle: 'A release smoke check for public pages, core content, top navigation, console errors, and sampled internal links.',
+    title: 'WSOP Web Automation Report',
+    subtitle: 'A public web check for page access, core content, top navigation, console errors, and sampled internal links.',
     total: 'Total Tests',
     passed: 'Passed',
     failed: 'Failed',
