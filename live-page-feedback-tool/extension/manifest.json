@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Live Page Feedback Toolbar",
+  "version": "1.0.0",
+  "description": "라이브 웹페이지에서 요소를 선택하고 에이전트용 피드백 마크다운을 생성합니다.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "32": "icon32.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  }
+}

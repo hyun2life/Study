@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Page Feedback</title>
+  <style>
+    :root {
+      --bg-color: #0b0f19;
+      --card-bg: rgba(30, 41, 59, 0.4);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-color: #f1f5f9;
+      --accent-color: hsl(250, 84%, 67%);
+      --accent-hover: hsl(250, 84%, 60%);
+      --muted-color: #94a3b8;
+      --border-color: #1e293b;
+      --success-color: #10b981;
+    }
+
+    body {
+      width: 300px;
+      margin: 0;
+      padding: 18px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      box-sizing: border-box;
+      overflow-x: hidden;
+    }
+
+    .header-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .app-icon {
+      width: 24px;
+      height: 24px;
+      object-fit: contain;
+    }
+
+    h1 {
+      font-size: 17px;
+      margin: 0;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      background: linear-gradient(135deg, #a78bfa, #6366f1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p.subtitle {
+      font-size: 11.5px;
+      line-height: 1.5;
+      margin: 0 0 16px 0;
+      color: var(--muted-color);
+    }
+
+    button.primary-btn {
+      width: 100%;
+      padding: 11px 14px;
+      font-size: 13.5px;
+      font-weight: 700;
+      color: white;
+      background-color: var(--accent-color);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+      outline: none;
+    }
+
+    button.primary-btn:hover {
+      background-color: var(--accent-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(99, 102, 241, 0.45);
+    }
+
+    button.primary-btn:active {
+      transform: translateY(1px);
+    }
+
+    /* Guide Accordion */
+    .guide-container {
+      margin-top: 14px;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      background-color: var(--card-bg);
+      backdrop-filter: blur(10px);
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .guide-toggle-btn {
+      width: 100%;
+      padding: 10px 14px;
+      background: transparent;
+      border: none;
+      color: var(--text-color);
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      text-align: left;
+      outline: none;
+    }
+
+    .guide-toggle-btn:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .toggle-arrow {
+      font-size: 10px;
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      color: var(--muted-color);
+    }
+
+    .guide-container.active .toggle-arrow {
+      transform: rotate(180deg);
+    }
+
+    .guide-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      padding: 0 14px;
+      box-sizing: border-box;
+      font-size: 11px;
+      line-height: 1.6;
+      border-top: 1px solid transparent;
+    }
+
+    .guide-container.active .guide-content {
+      padding: 12px 14px;
+      border-top: 1px solid var(--card-border);
+      max-height: 250px;
+    }
+
+    .step-list {
+      margin: 0;
+      padding-left: 16px;
+      color: #cbd5e1;
+    }
+
+    .step-list li {
+      margin-bottom: 8px;
+    }
+
+    .step-list li strong {
+      color: #f8fafc;
+    }
+
+    .tip-box {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: rgba(99, 102, 241, 0.15);
+      border-left: 3px solid var(--accent-color);
+      border-radius: 4px;
+      font-size: 10.5px;
+      color: #cbd5e1;
+    }
+
+    .tip-box strong {
+      color: #a78bfa;
+    }
+
+    /* Screenshot Box */
+    .screenshot-container {
+      margin-top: 14px;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      background-color: var(--card-bg);
+      backdrop-filter: blur(10px);
+      padding: 12px;
+      box-sizing: border-box;
+    }
+
+    .screenshot-title {
+      font-size: 12px;
+      font-weight: 700;
+      margin: 0 0 8px 0;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .screenshot-img {
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: transform 0.2s ease;
+    }
+
+    .screenshot-img:hover {
+      transform: scale(1.01);
+    }
+
+    .footer {
+      margin-top: 16px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border-color);
+      font-size: 10px;
+      text-align: center;
+      color: var(--muted-color);
+    }
+  </style>
+</head>
+<body>
+  <div class="header-container">
+    <img src="icon.png" class="app-icon" alt="Agentation Logo">
+    <h1>Live Page Feedback</h1>
+  </div>
+  <p class="subtitle">현재 탭의 화면 위에 피드백 수집 도구를 활성화합니다. 활성화 후 원하는 요소를 클릭하여 피드백 마크다운을 만드세요.</p>
+  
+  <button id="activate-btn" class="primary-btn">피드백 모드 켜기</button>
+  
+  <div class="guide-container" id="guide-wrapper">
+    <button class="guide-toggle-btn" id="guide-toggle-btn">
+      <span>💡 핵심 사용 가이드 보기</span>
+      <span class="toggle-arrow">▼</span>
+    </button>
+    <div class="guide-content" id="guide-content">
+      <ol class="step-list">
+        <li><strong>모드 활성화</strong>: 위의 <code>[피드백 모드 켜기]</code> 버튼을 클릭합니다.</li>
+        <li><strong>요소 선택</strong>: 페이지에서 검토할 요소 위에 마우스를 올리고 클릭합니다.</li>
+        <li><strong>메모 작성</strong>: 텍스트 입력창에 필요한 수정 의견을 적고 <code>[피드백 복사]</code>를 누릅니다.</li>
+        <li><strong>전달</strong>: 클립보드에 복사된 마크다운을 에이전트 채팅창에 붙여넣습니다.</li>
+      </ol>
+      <div class="tip-box">
+        <strong>💡 Pro Tips:</strong><br>
+        • 작성 중 <code>Esc</code>를 누르면 선택 모드가 즉시 종료됩니다.<br>
+        • 요소 클릭 시 텍스트 내용이 자동으로 수집되어 편리합니다.
+      </div>
+    </div>
+  </div>
+
+  <div class="screenshot-container">
+    <div class="screenshot-title">
+      📸 구동 예시 스크린샷
+    </div>
+    <img src="agentation-demo-check.png" class="screenshot-img" alt="Agentation 구동 예시">
+  </div>
+
+  <div class="footer">
+    Agentation Live Feedback Extension v1.0
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
