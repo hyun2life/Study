@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const btnRun = document.getElementById('btn-run');
   const btnKill = document.getElementById('btn-kill');
+  const btnShutdown = document.getElementById('btn-shutdown');
 
   const btnReportKo = document.getElementById('btn-report-ko');
   const btnReportEn = document.getElementById('btn-report-en');
@@ -352,5 +353,34 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(err => {
         console.error('Copy failed:', err);
       });
+  });
+
+  // 6. Server Shutdown Action
+  btnShutdown.addEventListener('click', () => {
+    if (confirm('대시보드 서버를 종료하시겠습니까?\n종료 후에는 대시보드를 다시 켤 때까지 실행할 수 없습니다.')) {
+      appendSystemLog('대시보드 서버 종료 요청 중...', 'text-system');
+      fetch('/api/shutdown', { method: 'POST' })
+        .then(res => {
+          if (!res.ok) throw new Error('Shutdown request failed');
+          return res.json();
+        })
+        .then(data => {
+          appendSystemLog('서버가 성공적으로 종료되었습니다. 이 브라우저 창을 닫아주세요.', 'text-muted');
+          alert('대시보드 서버가 종료되었습니다. 이 브라우저 탭을 닫아주세요.');
+          btnRun.disabled = true;
+          btnKill.disabled = true;
+          btnShutdown.disabled = true;
+          document.body.innerHTML = `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #060913; color: #9CA3AF; font-family: sans-serif; gap: 15px;">
+              <h1 style="color: #EF4444; margin-bottom: 5px; font-size: 2.5rem; font-weight: 700; letter-spacing: -1px;">Dashboard Stopped</h1>
+              <p style="font-size: 1.1rem;">웹 러너 대시보드 서버가 안전하게 완전히 종료되었습니다.</p>
+              <p style="font-size: 0.85rem; color: #4B5563; margin-top: 10px;">이 브라우저 탭을 안전하게 닫으셔도 됩니다. 다시 구동하려면 Run.bat을 더블클릭하세요.</p>
+            </div>
+          `;
+        })
+        .catch(err => {
+          appendSystemLog(`[ERROR] 종료 요청 실패: ${err.message}`, 'text-error');
+        });
+    }
   });
 });

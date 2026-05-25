@@ -242,6 +242,28 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // 7. POST /api/shutdown
+  if (method === 'POST' && url === '/api/shutdown') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, message: 'Server is shutting down...' }));
+
+    sendToSse('log', { text: '\n[SERVER] Shutdown request received. Exiting process...\n' });
+
+    // Terminate active child processes if any
+    if (activeProcess) {
+      try {
+        activeProcess.kill('SIGINT');
+      } catch (e) {}
+    }
+
+    // Delay exit to allow response to flush to the client
+    setTimeout(() => {
+      console.log('WSOP Web Runner dashboard server has been shutdown by user request.');
+      process.exit(0);
+    }, 1000);
+    return;
+  }
+
   // Route not found
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('Not Found');
