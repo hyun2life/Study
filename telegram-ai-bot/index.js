@@ -24,7 +24,8 @@ const bot = new TelegramBot(token, { polling: true });
 console.log("🤖 텔레그램 AI 에이전트 제어 봇이 시작되었습니다. 메시지를 기다리는 중...");
 
 if (geminiApiKey && geminiApiKey !== "your_gemini_api_key_here") {
-  console.log("✨ Gemini 2.5 Flash 에이전트 모드가 활성화되었습니다. (REST API + Function Calling)");
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  console.log(`✨ Gemini 에이전트 모드가 활성화되었습니다. (모델: ${modelName}, REST API + Function Calling)`);
 } else {
   console.log("⚠️ 경고: GEMINI_API_KEY가 설정되지 않았습니다. 자연어 제어 및 AI 대화 기능이 비활성화되며, 슬래시 명령어만 제공됩니다.");
 }
@@ -270,7 +271,7 @@ async function executeTool(name, args, chatId) {
       };
     } else {
       console.log(`[Sync Exec] ${command} at ${safeCwd}`);
-      bot.sendMessage(chatId, `⏳ <i>명령어 실행 중: \`${command}\`</i>`, { parse_mode: "Markdown" }).catch(() => {});
+      bot.sendMessage(chatId, `⏳ <i>명령어 실행 중: <code>${command}</code></i>`, { parse_mode: "HTML" }).catch(() => {});
       
       return new Promise((resolve) => {
         exec(command, { cwd: safeCwd, timeout: 45000, maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
@@ -287,6 +288,70 @@ async function executeTool(name, args, chatId) {
   }
 
   throw new Error(`지원하지 않는 도구 이름: ${name}`);
+}
+
+// 마크다운을 텔레그램 호환 HTML로 변환하는 헬퍼 함수
+function convertToTelegramHtml(markdown) {
+  if (!markdown) return "";
+
+  // 1. 기본 HTML 이스케이프
+  let html = markdown
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // 임시 치환용 플레이스홀더 배열
+  const placeholders = [];
+  let placeholderIndex = 0;
+
+  // 2. 코드 블록 보호 및 치환 (```code```)
+  html = html.replace(/```([\s\S]*?)```/g, (match, codeContent) => {
+    let cleanCode = codeContent;
+    let langClass = "";
+    const lines = codeContent.split("\n");
+    if (lines.length > 0 && lines[0].trim() && !lines[0].includes(" ") && lines[0].length < 15) {
+      const potentialLang = lines[0].trim();
+      if (/^[a-zA-Z0-9+#-]+$/.test(potentialLang)) {
+        langClass = ` class="language-${potentialLang}"`;
+        cleanCode = lines.slice(1).join("\n");
+      }
+    }
+    
+    cleanCode = cleanCode.replace(/^\n+/, "").replace(/\n+$/, "");
+    const replacement = `<pre><code${langClass}>${cleanCode}</code></pre>`;
+    const placeholder = `___BLOCK_CODE_PLACEHOLDER_${placeholderIndex}___`;
+    placeholders.push({ placeholder, value: replacement });
+    placeholderIndex++;
+    return placeholder;
+  });
+
+  // 3. 인라인 코드 보호 및 치환 (`code`)
+  html = html.replace(/`([^`\n]+?)`/g, (match, codeContent) => {
+    const replacement = `<code>${codeContent}</code>`;
+    const placeholder = `___INLINE_CODE_PLACEHOLDER_${placeholderIndex}___`;
+    placeholders.push({ placeholder, value: replacement });
+    placeholderIndex++;
+    return placeholder;
+  });
+
+  // 4. 볼드 치환 (**text** 또는 __text__)
+  html = html.replace(/\*\*([^\*]+?)\*\*/g, "<b>$1</b>");
+  html = html.replace(/__([^_]+?)__/g, "<b>$1</b>");
+
+  // 5. 이탤릭 치환 (*text* 또는 _text_)
+  html = html.replace(/\*([^\*]+?)\*/g, "<i>$1</i>");
+  html = html.replace(/_([^_]+?)_/g, "<i>$1</i>");
+
+  // 6. 링크 치환 ([text](url))
+  html = html.replace(/\[([^\]]+?)\]\((https?:\/\/[^\s\)]+?)\)/g, '<a href="$2">$1</a>');
+
+  // 7. 플레이스홀더 복원 (역순으로 진행하여 중첩 방지)
+  for (let i = placeholders.length - 1; i >= 0; i--) {
+    const ph = placeholders[i];
+    html = html.replace(ph.placeholder, ph.value);
+  }
+
+  return html;
 }
 
 // Gemini API 연동 호출 헬퍼
@@ -307,7 +372,7 @@ async function callGeminiAPI(chatId, newParts) {
     saveHistory(conversations);
   }
 
-  const model = "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
 
   const response = await fetch(url, {
@@ -504,17 +569,24 @@ bot.on("message", async (msg) => {
 
       const finalResponseText = content.parts?.map(p => p.text || "").join("") || "(답변 없음)";
       
-      // 마크다운 형식 전송 시도
+      // 마크다운을 텔레그램 호환 HTML로 변환
+      const htmlResponse = convertToTelegramHtml(finalResponseText);
+      
+      // HTML 형식 전송 시도
       try {
-        await bot.sendMessage(chatId, finalResponseText, { parse_mode: "Markdown" });
+        await bot.sendMessage(chatId, htmlResponse, { parse_mode: "HTML" });
       } catch (sendErr) {
-        console.warn("Markdown 전송 실패, 일반 텍스트로 대체하여 재시도:", sendErr.message);
+        console.warn("HTML 전송 실패, 일반 텍스트로 대체하여 재시도:", sendErr.message);
         await bot.sendMessage(chatId, finalResponseText);
       }
     }
 
   } catch (err) {
     console.error("에러 발생:", err);
-    bot.sendMessage(chatId, `❌ 에러가 발생했습니다:\n<code>${err.message}</code>`, { parse_mode: "HTML" });
+    if (err.message.includes("429") || err.message.includes("RESOURCE_EXHAUSTED")) {
+      bot.sendMessage(chatId, `⚠️ <b>Gemini API 호출 한도 초과 또는 차단 (429)</b>\n\n현재 설정된 구글 API 키의 무료 티어 한도가 0으로 잠겨 있거나 초과되었습니다.\n\nAI 자연어 대화 모드는 일시적으로 비활성화되지만, 로컬 자동화를 제어하는 <b>수동 슬래시 명령어</b>는 정상 작동합니다.\n\n👉 <b>사용 가능한 명령어:</b>\n• /run - 대시보드 서버 기동 (Run.bat)\n• /run_crawler - 크롤러 빠른 실행 (선수 2명)\n• /run_crawler_full - 크롤러 정밀 실행\n• /run_qa - Playwright QA 테스트\n• /help - 도움말 보기`, { parse_mode: "HTML" });
+    } else {
+      bot.sendMessage(chatId, `❌ 에러가 발생했습니다:\n<code>${err.message}</code>`, { parse_mode: "HTML" });
+    }
   }
 });
